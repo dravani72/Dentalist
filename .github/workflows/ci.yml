@@ -1,0 +1,33 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: psql -h localhost -U postgres -f db/bootstrap.sql
+      - run: npm run build -w @teeth/shared
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build -w @teeth/web
+      - name: No secrets or licensed code sets committed
+        run: |
+          ! git grep -nE 'BEGIN (RSA|EC|OPENSSH) PRIVATE KEY' -- . ':!*.md'

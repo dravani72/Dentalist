@@ -1,0 +1,164 @@
+/**
+ * Chart entry kinds: which table each lives in, which columns a draft edit may change, and
+ * how a row is canonicalized into the signed payload. Workflow columns (status, locked_at,
+ * billing projection) are deliberately left out of the canonical form: they are not part of
+ * what the dentist attests to.
+ */
+export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media';
+
+export interface EntryKindDef {
+  table: string;
+  /** Columns a draft PATCH may change. */
+  editable: readonly string[];
+  /** Columns included in the canonical attested payload, besides the shared provenance set. */
+  clinical: readonly string[];
+  hasTooth: boolean;
+  hasVersion: boolean;
+  /** Whether amendments supersede rows of this kind (false: rows are only ever added). */
+  supersedable: boolean;
+}
+
+export const PROCEDURE_DETAIL_COLUMNS = [
+  'technique',
+  'isolation',
+  'shade',
+  'liner_base',
+  'matrix_system',
+  'bonding_system',
+  'cement',
+  'materials_removed',
+  'contact_verified',
+  'occlusion_verified',
+  'hemostasis',
+  'complications',
+  'lab_case_reference',
+  'postop_instructions',
+] as const;
+
+export const ENTRY_KINDS: Record<EntryKind, EntryKindDef> = {
+  finding: {
+    table: 'clinical_finding',
+    editable: ['surfaces', 'category', 'finding_type', 'certainty', 'note'],
+    clinical: ['surfaces', 'category', 'finding_type', 'certainty', 'note', 'verified_by', 'verified_at'],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
+  existing: {
+    table: 'existing_restoration',
+    editable: ['surfaces', 'treatment_type', 'material', 'note'],
+    clinical: ['surfaces', 'treatment_type', 'material', 'note'],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
+  diagnosis: {
+    table: 'diagnosis',
+    editable: ['label', 'concept_system', 'concept_code', 'certainty', 'finding_ids', 'note'],
+    clinical: ['surfaces', 'label', 'concept_system', 'concept_code', 'certainty', 'finding_ids', 'note'],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
+  plan: {
+    table: 'planned_procedure',
+    editable: ['surfaces', 'procedure_concept', 'phase', 'priority', 'finding_ids', 'diagnosis_ids', 'note'],
+    clinical: ['surfaces', 'procedure_concept', 'phase', 'priority', 'finding_ids', 'diagnosis_ids', 'note', 'treatment_plan_id'],
+    hasTooth: true,
+    // Plan items keep moving through workflow after signing (version bumps with status), so
+    // the version counter is not part of what was attested.
+    hasVersion: false,
+    supersedable: true,
+  },
+  procedure: {
+    table: 'procedure_occurrence',
+    editable: ['surfaces', ...PROCEDURE_DETAIL_COLUMNS, 'concept_details', 'performed_by', 'assisted_by', 'note'],
+    clinical: [
+      'surfaces',
+      'procedure_concept',
+      'planned_procedure_id',
+      ...PROCEDURE_DETAIL_COLUMNS,
+      'concept_details',
+      'performed_by',
+      'assisted_by',
+      'started_at',
+      'completed_at',
+      'verified_by',
+      'verified_at',
+      'note',
+    ],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
+  note: {
+    table: 'encounter_note',
+    editable: ['kind', 'body'],
+    clinical: ['kind', 'body'],
+    hasTooth: false,
+    hasVersion: true,
+    supersedable: true,
+  },
+  anesthetic: {
+    table: 'anesthetic_event',
+    editable: ['drug', 'concentration', 'vasoconstrictor', 'amount_ml', 'route', 'site', 'administered_at', 'administered_by', 'adverse_event'],
+    clinical: ['procedure_occurrence_id', 'drug', 'concentration', 'vasoconstrictor', 'amount_ml', 'route', 'site', 'administered_at', 'administered_by', 'adverse_event'],
+    hasTooth: false,
+    hasVersion: true,
+    supersedable: true,
+  },
+  material: {
+    table: 'procedure_material',
+    editable: [],
+    clinical: ['procedure_occurrence_id', 'action', 'material', 'product', 'lot'],
+    hasTooth: false,
+    hasVersion: false,
+    supersedable: false,
+  },
+  media: {
+    table: 'media_object',
+    editable: [],
+    clinical: ['modality', 'content_type', 'sha256', 'byte_size', 'tooth_instance_ids', 'acquired_at'],
+    hasTooth: false,
+    hasVersion: false,
+    supersedable: false,
+  },
+};
+
+export const ROUTE_KINDS: Record<string, EntryKind> = {
+  findings: 'finding',
+  'existing-restorations': 'existing',
+  diagnoses: 'diagnosis',
+  'planned-procedures': 'plan',
+  procedures: 'procedure',
+  notes: 'note',
+  anesthetics: 'anesthetic',
+};
+
+function norm(v: unknown): unknown {
+  if (v instanceof Date) return v.toISOString();
+  if (Array.isArray(v)) return v.map(norm);
+  return v;
+}
+
+/** Canonical form of one entry row for the attested payload and for integrity re-checks. */
+export function canonicalEntry(kind: EntryKind, row: Record<string, unknown>): Record<string, unknown> {
+  const def = ENTRY_KINDS[kind];
+  const out: Record<string, unknown> = {
+    id: row.id,
+    supersedesId: row.supersedes_id ?? null,
+    recordedBy: row.recorded_by,
+    recordedAt: norm(row.recorded_at),
+    updatedBy: row.updated_by ?? null,
+    updatedAt: norm(row.updated_at ?? null),
+    enteredInError: row.entered_in_error ?? false,
+    voidReason: row.void_reason ?? null,
+  };
+  if (def.hasVersion) out.version = row.version;
+  if (def.hasTooth) {
+    out.toothInstanceId = row.tooth_instance_id ?? null;
+    out.tooth = row.tooth_universal ?? null;
+  }
+  for (const c of def.clinical) out[c] = norm(row[c] ?? null);
+  return out;
+}

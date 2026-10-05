@@ -1,0 +1,18 @@
+{
+  "name": "teeth",
+  "private": true,
+  "description": "Dental office management platform: scheduling, charting, sign-off, e-prescribing. Synthetic data only outside production.",
+  "workspaces": ["packages/shared", "apps/api", "apps/web"],
+  "scripts": {
+    "build": "npm run build -w @teeth/shared && npm run build -w @teeth/api && npm run build -w @teeth/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w @teeth/shared && npm test --workspaces --if-present",
+    "db:migrate": "npm run db:migrate -w @teeth/api",
+    "db:seed": "npm run db:seed -w @teeth/api",
+    "db:reset": "npm run db:reset -w @teeth/api",
+    "dev:api": "npm run dev -w @teeth/api",
+    "dev:web": "npm run dev -w @teeth/web",
+    "verify:integrity": "npm run verify:integrity -w @teeth/api"
+  },
+  "engines": { "node": ">=22" }
+}
