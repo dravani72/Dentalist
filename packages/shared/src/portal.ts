@@ -17,6 +17,7 @@ export const PORTAL_SCOPES = [
   'messages',
   'forms',
   'requests',
+  'billing',
 ] as const;
 export type PortalScope = (typeof PORTAL_SCOPES)[number];
 
@@ -30,6 +31,7 @@ export const PORTAL_SCOPE_LABELS: Record<PortalScope, string> = {
   messages: 'Secure messages',
   forms: 'Consent forms',
   requests: 'Requests (appointments, records, amendments)',
+  billing: 'Balance, statements and cost estimates',
 };
 
 /** Caregivers start with a narrower set; staff can widen it with the patient's authorization. */

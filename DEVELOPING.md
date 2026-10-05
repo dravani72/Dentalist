@@ -38,7 +38,8 @@ code for `.test` accounts (the dev endpoint refuses anything else and is off in 
 | marcus.lee@maple.example.test | Dentist | IL license |
 | jane.smith@maple.example.test | Dental assistant | charts, cannot verify or sign |
 | rosa.diaz@maple.example.test | Hygienist | |
-| frank.ito@maple.example.test | Front desk | schedule and demographics, no clinical actions |
+| frank.ito@maple.example.test | Front desk | schedule, demographics, insurance, takes payments; no clinical actions |
+| bea.carter@maple.example.test | Billing | charges, adjustments, claims, fee schedules (fee_schedule.manage granted in the fixture) |
 | cora.webb@maple.example.test | Compliance officer | audit log, access reports, break-glass |
 | omar.khan@riverbend.example.test | Dentist, second practice | used to prove tenant isolation |
 
@@ -56,6 +57,20 @@ Grace Okafor has an unused caregiver invitation for Samuel Okafor. Staff manage 
 **Portal & forms** tab and work patient messages and requests in **Portal inbox**. See
 `docs/architecture/patient-portal.md`.
 
+### Billing
+
+Codes and fees are an invented **SYNTHETIC** set (`SYN-…`, `apps/api/src/billing/synthetic-codes.ts`); the seed loads
+it with demo fee schedules and two payers. A licensed deployment loads CDT from the practice's ADA files, which are
+never committed:
+
+```sh
+npm run codes:load -w @teeth/api -- --cdt "CDT 2027" --codes cdt-2027.csv --rules cdt-2027-rules.csv
+```
+
+Claims go to a synthetic clearinghouse (member ids starting `SYN` are covered, `SYNX` inactive, anything else
+rejected). Remittances are looked for `CLAIM_POLL_SECONDS` after a claim is accepted (default 1800) or at once with
+**Billing → Check for insurance payments**. See `docs/architecture/revenue-cycle.md`.
+
 The seeded patient is **Jordan Rivera** (penicillin allergy): visits in 2019, 2021 (x2), 2023 signed, and today's
 restorative visit waiting for the dentist's review.
 
@@ -67,11 +82,12 @@ npm run verify:integrity          # re-hashes and re-verifies every signed visit
 npm run typecheck
 ```
 
-The API suites (56 tests) cover tenant isolation through row-level security, privilege and license checks,
+The API suites (73 tests) cover tenant isolation through row-level security, privilege and license checks,
 double-booking, sign/lock/amend, database-level immutability, integrity verification, eRx screening and idempotent
 transmission, webhook signature/replay checks, break-glass, the audit hash chain, and the patient portal
 (`test/portal.test.ts`: per-patient database wall, scopes, age rules, revocation, sign-in codes and lockout,
-consent hashing and immutability, PHI-free notifications, online booking).
+consent hashing and immutability, PHI-free notifications, online booking) and the revenue cycle
+(`test/billing.test.ts`: charges from signed work only, append-only ledger, estimates, claims, remittance posted once).
 
 ## Layout
 

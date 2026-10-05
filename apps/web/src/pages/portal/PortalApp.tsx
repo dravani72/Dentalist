@@ -7,6 +7,7 @@ import { fmtDate } from '../../lib/format';
 import type { PortalMe, PortalPatient } from './types';
 import { RELATIONSHIP_LABEL, Status } from './ui';
 import { Appointments, Forms, Health, Home, Messages, Plan, Prescriptions, Requests, Settings, Visits } from './sections';
+import { Billing } from './billing';
 
 const SYNTHETIC_ACCOUNTS: [string, string][] = [
   ['jordan.rivera@patients.example.test', 'Jordan Rivera (own record)'],
@@ -223,7 +224,7 @@ function AcceptInvitation({ onDone, onCancel }: { onDone: (email: string) => voi
 
 // ------------------------------------------------------------------ signed in
 
-type Section = 'home' | 'appointments' | 'visits' | 'plan' | 'health' | 'prescriptions' | 'messages' | 'forms' | 'requests' | 'settings';
+type Section = 'home' | 'appointments' | 'visits' | 'plan' | 'health' | 'prescriptions' | 'billing' | 'messages' | 'forms' | 'requests' | 'settings';
 const SECTIONS: [Section, string, PortalScope | null][] = [
   ['home', 'Home', null],
   ['appointments', 'Appointments', 'appointments'],
@@ -231,6 +232,7 @@ const SECTIONS: [Section, string, PortalScope | null][] = [
   ['plan', 'Treatment plan', 'treatment_plan'],
   ['health', 'Health', 'health_record'],
   ['prescriptions', 'Prescriptions', null],
+  ['billing', 'Billing', 'billing'],
   ['messages', 'Messages', 'messages'],
   ['forms', 'Forms', 'forms'],
   ['requests', 'Requests', 'requests'],
@@ -329,6 +331,8 @@ function PortalSection({ section, sub, p, me }: { section: Section; sub?: string
       return <Health p={p} />;
     case 'prescriptions':
       return <Prescriptions p={p} />;
+    case 'billing':
+      return <Billing p={p} />;
     case 'messages':
       return <Messages p={p} threadId={sub} />;
     case 'forms':

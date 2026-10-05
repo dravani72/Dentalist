@@ -10,6 +10,7 @@ import { PatientWorkspace } from './pages/PatientWorkspace';
 import { AuditLog } from './pages/AuditLog';
 import { PortalApp } from './pages/portal/PortalApp';
 import { PortalInbox } from './pages/PortalInbox';
+import { BillingPage } from './pages/billing/BillingPage';
 
 export function App() {
   const [token, setTok] = useState(getToken());
@@ -60,6 +61,7 @@ function Authed() {
             {link('schedule', 'Schedule', 'schedule')}
             {link('patients', 'Patients', 'patients')}
             {(me.data.privileges.includes('portal.respond') || me.data.privileges.includes('consent.manage')) && link('portal-inbox', 'Portal inbox', 'portal-inbox')}
+            {me.data.privileges.includes('billing.read') && link('billing', 'Billing', 'billing')}
             {me.data.privileges.includes('audit.read') && link('audit', 'Audit log', 'audit')}
           </nav>
           <div className="who">
@@ -74,7 +76,8 @@ function Authed() {
         <main className="page">
           {section === 'schedule' && <Schedule />}
           {section === 'patients' && !id && <Patients />}
-          {section === 'patients' && id && <PatientWorkspace patientId={id} />}
+          {section === 'patients' && id && <PatientWorkspace key={id} patientId={id} initialTab={route[2]} />}
+          {section === 'billing' && <BillingPage />}
           {section === 'audit' && <AuditLog />}
           {section === 'portal-inbox' && <PortalInbox />}
         </main>

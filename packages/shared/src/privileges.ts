@@ -22,6 +22,18 @@ export const PRIVILEGES = [
   'prescription.prepare',
   'prescription.sign_noncontrolled',
   'prescription.sign_controlled',
+  /** See balances, ledgers, insurance, estimates and claims. */
+  'billing.read',
+  /** Post charges for signed procedures and correct their billing codes. */
+  'charge.post',
+  /** Record payments received from patients. */
+  'payment.post',
+  /** Write off, correct or refund amounts on a patient ledger. */
+  'ledger.adjust',
+  /** Add and edit a patient's insurance and run eligibility checks. */
+  'insurance.manage',
+  /** Set the practice's fees, payers and contracted fee schedules. */
+  'fee_schedule.manage',
   'claim.prepare',
   'claim.submit',
   'record.export',
@@ -74,7 +86,18 @@ export type RoleTemplate =
   | 'compliance_officer';
 
 export const ROLE_TEMPLATES: Record<RoleTemplate, readonly Privilege[]> = {
-  front_desk: ['patient.read', 'patient.write_demographics', 'medical_history.record', 'schedule.read', 'schedule.write', 'portal.manage', 'portal.respond'],
+  front_desk: [
+    'patient.read',
+    'patient.write_demographics',
+    'medical_history.record',
+    'schedule.read',
+    'schedule.write',
+    'portal.manage',
+    'portal.respond',
+    'billing.read',
+    'payment.post',
+    'insurance.manage',
+  ],
   dental_assistant: [
     'patient.read',
     'medical_history.record',
@@ -119,8 +142,33 @@ export const ROLE_TEMPLATES: Record<RoleTemplate, readonly Privilege[]> = {
     'prescription.sign_noncontrolled',
     'portal.respond',
     'consent.manage',
+    'billing.read',
   ],
-  billing: ['patient.read', 'schedule.read', 'claim.prepare', 'claim.submit'],
-  practice_manager: ['patient.read', 'patient.write_demographics', 'schedule.read', 'schedule.write', 'admin.staff', 'audit.read', 'portal.manage', 'portal.respond', 'consent.manage'],
+  billing: [
+    'patient.read',
+    'schedule.read',
+    'billing.read',
+    'charge.post',
+    'payment.post',
+    'ledger.adjust',
+    'insurance.manage',
+    'claim.prepare',
+    'claim.submit',
+    'portal.respond',
+  ],
+  practice_manager: [
+    'patient.read',
+    'patient.write_demographics',
+    'schedule.read',
+    'schedule.write',
+    'admin.staff',
+    'audit.read',
+    'portal.manage',
+    'portal.respond',
+    'consent.manage',
+    'billing.read',
+    'ledger.adjust',
+    'fee_schedule.manage',
+  ],
   compliance_officer: ['audit.read', 'security.break_glass', 'record.export'],
 };

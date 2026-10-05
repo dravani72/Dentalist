@@ -23,6 +23,8 @@ export interface PortalPatient {
   unreadMessages: number | null;
   pendingForms: number | null;
   openRequests: number | null;
+  /** Present with the billing scope: what the patient owes now (after insurance still expected). */
+  amountDueCents: number | null;
 }
 
 export interface PortalLocation {

@@ -140,6 +140,8 @@ export const PROCEDURE_TRANSITIONS: readonly Transition<ProcedureStatus>[] = [
   // SIGNED is only reachable through encounter signing; CLAIMED only from SIGNED (Phase 5).
   { from: 'CLINICALLY_VERIFIED', to: 'SIGNED', privilege: 'encounter.sign' },
   { from: 'SIGNED', to: 'CLAIMED', privilege: 'claim.submit' },
+  // A rejected or voided claim releases the procedure for a corrected claim.
+  { from: 'CLAIMED', to: 'SIGNED', privilege: 'claim.prepare' },
 ];
 
 /** Statuses from which a pre-signature entry may be voided (with a reason). */

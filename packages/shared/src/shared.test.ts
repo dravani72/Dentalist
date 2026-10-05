@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  benefitYearStart,
+  estimate,
+  formatCents,
   DENTAL_POSITIONS,
   ENCOUNTER_TRANSITIONS,
   PROCEDURE_TRANSITIONS,
@@ -93,5 +96,35 @@ describe('reminders', () => {
     });
     expect(text).toContain('10:30');
     expect(text).not.toMatch(/crown|extraction|root canal|filling|composite/i);
+  });
+});
+
+describe('insurance estimates', () => {
+  const benefits = { coverage: { preventive: 100, basic: 80, major: 50 }, deductibleRemainingCents: 5000, deductibleWaived: ['preventive'] as const, remainingMaxCents: 30000 };
+  it('applies network fee, deductible (not on preventive), coverage and the annual maximum in order', () => {
+    const e = estimate(
+      [
+        { key: 'clean', category: 'preventive', feeCents: 11000, allowedCents: 8800 },
+        { key: 'fill', category: 'basic', feeCents: 28000, allowedCents: 22400 },
+        { key: 'crown', category: 'major', feeCents: 125000, allowedCents: 100000 },
+      ],
+      benefits,
+    );
+    expect(e.lines.map((l) => [l.key, l.deductibleCents, l.insuranceCents, l.patientCents, l.writeOffCents])).toEqual([
+      ['clean', 0, 8800, 0, 2200],
+      ['fill', 5000, 13920, 8480, 5600],
+      ['crown', 0, 30000 - 8800 - 13920, 100000 - (30000 - 8800 - 13920), 25000],
+    ]);
+    expect(e.remainingMaxAfterCents).toBe(0);
+    expect(e.totals.insuranceCents).toBe(30000);
+  });
+  it('without insurance the patient pays the office fee', () => {
+    const e = estimate([{ key: 'x', category: 'basic', feeCents: 1000, allowedCents: 800 }], null);
+    expect(e.lines[0]).toMatchObject({ insuranceCents: 0, patientCents: 1000, writeOffCents: 0 });
+  });
+  it('finds the benefit year for plans that renew mid-year', () => {
+    expect(benefitYearStart('2026-03-15', 7)).toBe('2025-07-01');
+    expect(benefitYearStart('2026-08-01', 7)).toBe('2026-07-01');
+    expect(formatCents(-1520)).toBe('−$15.20');
   });
 });

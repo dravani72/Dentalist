@@ -6,6 +6,8 @@ import { AuditService } from '../audit/audit.service';
 import { systemActor } from '../auth/actor';
 import { logger } from '../common/logger';
 import { PrescribingService } from '../prescribing/prescribing.service';
+import { BillingService } from '../billing/billing.service';
+import { ClaimsService } from '../billing/claims.service';
 
 /** Outbound messaging boundary: Amazon SES / Twilio (BAA tier) in production. */
 export interface MessageSender {
@@ -53,6 +55,8 @@ export class OutboxWorker implements OnModuleDestroy {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(PrescribingService) private readonly rx: PrescribingService,
     @Inject(MESSAGE_SENDER) private readonly sender: MessageSender,
+    @Inject(BillingService) private readonly billing: BillingService,
+    @Inject(ClaimsService) private readonly claims: ClaimsService,
   ) {}
 
   start(intervalMs = 1000) {
@@ -97,6 +101,15 @@ export class OutboxWorker implements OnModuleDestroy {
         case 'portal.notify':
           await this.portalNotify(job.org_id, job.payload.patientId!, job.payload.kind!, correlationId);
           break;
+        case 'billing.post_charges':
+          await this.billing.postChargesForEncounter(job.org_id, job.payload.encounterId!, correlationId);
+          break;
+        case 'claim.submit':
+          await this.claims.transmit(job.org_id, job.payload.claimId!, correlationId);
+          break;
+        case 'claim.poll':
+          await this.claims.poll(job.org_id, job.payload.claimId!, Number(job.payload.n ?? 1), correlationId);
+          break;
         case 'security.break_glass_notify':
           // Production: page the practice's privacy officer. Here: a log line with ids only.
           logger.event('security.break_glass_notify', { orgId: job.org_id, grantId: job.payload.grantId });
@@ -117,6 +130,9 @@ export class OutboxWorker implements OnModuleDestroy {
       logger.warn({ msg: 'outbox job failed', jobId: job.id, topic: job.topic, attempts: job.attempts, final, err }, 'Outbox');
       if (final && job.topic === 'prescription.transmit') {
         await this.rx.transmitFailed(job.org_id, job.payload.prescriptionId!, message, correlationId);
+      }
+      if (final && job.topic === 'claim.submit') {
+        await this.claims.transmitFailed(job.org_id, job.payload.claimId!, message);
       }
     }
   }

@@ -18,6 +18,8 @@ import { MediaService } from '../media/media.service';
 import { PrescribingService } from '../prescribing/prescribing.service';
 import { PortalStaffService } from '../portal/portal-staff.service';
 import { PortalAuthService } from '../portal/portal-auth.service';
+import { BillingService } from '../billing/billing.service';
+import { ClaimsService } from '../billing/claims.service';
 import { DEFAULT_SCOPES, PORTAL_SCOPES } from '@teeth/shared';
 import { MAPLE, RIVERBEND, SYNTHETIC_PASSWORD, createTenant, scriptedActor } from './fixtures';
 import { XrayTooth, syntheticXraySvg } from './synthetic-xray';
@@ -87,7 +89,10 @@ async function main() {
     for (const t of ['clinical_finding', 'existing_restoration', 'planned_procedure', 'procedure_occurrence', 'anesthetic_event', 'encounter_note', 'media_object']) {
       await owner.query(`UPDATE ${t} SET recorded_at = $2::date + time '14:30' WHERE encounter_id = $1`, [id, date]);
     }
-    await owner.query("UPDATE procedure_occurrence SET started_at = $2::date + time '14:30' WHERE encounter_id = $1", [id, date]);
+    await owner.query(
+      "UPDATE procedure_occurrence SET started_at = $2::date + time '14:30', completed_at = CASE WHEN completed_at IS NULL THEN NULL ELSE $2::date + time '15:30' END WHERE encounter_id = $1",
+      [id, date],
+    );
     await owner.query("UPDATE encounter SET opened_at = $2::date + time '14:00' WHERE id = $1", [id, date]);
     if (!sign) return id;
     await signing.transition(jane, id, 'READY_FOR_REVIEW');
@@ -146,6 +151,33 @@ async function main() {
     });
     await chart.procedureStatus(jane, p!.id, 'PERFORMED');
   });
+
+  // ---------------------------------------------------------------- billing history
+  // Charges for the signed visits (invented SYNTHETIC codes and fees). The 2021 work was paid by
+  // Jordan before they had dental insurance; the 2023 crown went to Synthetic Mutual and Jordan
+  // has paid part of their share, so the portal shows a balance due.
+  const bea = await scriptedActor(owner, maple, 'bea');
+  const billing = app.get(BillingService);
+  const claims = app.get(ClaimsService);
+  await billing.postCharges(bea, jordan.id);
+  const policy = await billing.savePolicy(frank, jordan.id, {
+    rank: 1, payerId: maple.billing.inNetworkPayerId, memberId: 'SYN4417200', groupNumber: 'SYN-GRP-12', subscriberRelationship: 'self',
+    planName: 'Synthetic Mutual PPO', annualMaxCents: 150000, deductibleCents: 5000, deductibleWaived: ['diagnostic', 'preventive'],
+    coverage: { diagnostic: 100, preventive: 100, basic: 80, endodontic: 80, periodontic: 80, oral_surgery: 80, major: 50, implant: 50 },
+    benefitYearStartMonth: 1, effectiveFrom: '2022-01-01',
+  });
+  await billing.checkEligibility(frank, policy.id);
+  const charges = (await billing.account(bea, jordan.id)).ledger.filter((e) => e.kind === 'charge');
+  const early = charges.filter((c) => (c.service_date ?? '') < '2022-01-01');
+  for (const c of early) {
+    await billing.postPayment(frank, { patientId: jordan.id, method: 'check', amountCents: c.amount_cents, receivedOn: c.service_date!, reference: `CHK ${1000 + early.indexOf(c)}` });
+  }
+  const crown3 = charges.filter((c) => (c.service_date ?? '') >= '2023-01-01').map((c) => c.id);
+  const claim = await claims.create(bea, { patientId: jordan.id, insurancePolicyId: policy.id, chargeIds: crown3 });
+  await claims.submit(bea, claim.id);
+  await claims.transmit(maple.orgId, claim.id, 'seed');
+  await claims.postRemittances(maple.orgId, 'seed');
+  await billing.postPayment(frank, { patientId: jordan.id, method: 'card_terminal', amountCents: 20000, receivedOn: '2023-09-05', reference: 'Terminal receipt 0457' });
 
   // ---------------------------------------------------------------- today's schedule
   const today = new Date().toISOString().slice(0, 10);
@@ -222,7 +254,8 @@ async function main() {
   console.log('\nSynthetic data loaded. Sign in at the web app with any of these (password: ' + SYNTHETIC_PASSWORD + '):');
   for (const t of [maple, river]) for (const s of Object.values(t.staff)) console.log(`  ${s.email.padEnd(40)} ${s.role}`);
   console.log('Authenticator codes: the login screen shows the current code for synthetic users when DEV_TOOLS=1.');
-  console.log('\nPatient portal (/#/portal, same password): jordan.rivera@patients.example.test (self), kasia.kowalski@patients.example.test (parent of Lena Kowalski, 12).');
+  console.log('\nBilling: bea.carter@maple.example.test posts charges, claims and payments; codes and fees are the invented SYNTHETIC set.');
+  console.log('Patient portal (/#/portal, same password): jordan.rivera@patients.example.test (self), kasia.kowalski@patients.example.test (parent of Lena Kowalski, 12).');
   console.log('Emailed sign-in codes: the portal sign-in screen shows them for synthetic accounts when DEV_TOOLS=1.');
 }
 
