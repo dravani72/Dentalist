@@ -4,14 +4,14 @@ Synthetic data only. Never load real patient information into any environment bu
 
 ## Prerequisites
 
-- Node 22+
+- Node 22.9+
 - PostgreSQL 16 with the `pgcrypto` and `btree_gist` extensions (both ship with standard Postgres)
 
 ## First-time setup
 
 ```sh
 npm install
-cp .env.example .env                      # local-only values
+cp .env.example .env                      # local-only values (DEV_TOOLS=1 shows sign-in codes for demo accounts)
 psql -U postgres -f db/bootstrap.sql      # creates roles teeth_owner / teeth_app and databases teeth / teeth_test
 npm run build -w @teeth/shared
 npm run db:migrate                        # applies db/migrations as teeth_owner
@@ -19,6 +19,9 @@ npm run db:seed                           # two synthetic practices, one patient
 ```
 
 `npm run db:reset` drops everything owned by `teeth_owner` and reseeds.
+
+The API and the `db:*`, `worker`, `verify:integrity` and `codes:load` scripts read `.env` from the repository root
+when it exists. Variables already set in your shell win over the file. Tests and `npm start` never read it.
 
 ## Running
 

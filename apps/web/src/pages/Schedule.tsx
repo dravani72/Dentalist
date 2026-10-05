@@ -137,16 +137,45 @@ export function Schedule() {
                       const end = zonedMinutes(a.end_at, tz);
                       const top = (Math.max(start, DAY_START) - DAY_START) * PX_PER_MIN;
                       const h = Math.max((Math.min(end, DAY_END) - Math.max(start, DAY_START)) * PX_PER_MIN, 18);
+                      const status = (
+                        <>
+                          <span aria-hidden="true">{STATUS_ICON[a.status] ?? '○'}</span> {humanize(a.status)}
+                        </>
+                      );
+                      const when = `${fmtTime(a.start_at, tz)} · ${a.appointment_type}`;
+                      const who = a.provider_ids.map((id) => providers.find((p) => p.id === id)?.display_name ?? '').join(', ');
+                      // Short visits get fewer, denser lines so the status word is never cut off.
+                      const lines = h >= 52 ? 3 : h >= 30 ? 2 : 1;
                       return (
-                        <button key={a.id} className={`appt st-${a.status}`} style={{ top, height: h }} onClick={() => setSelected(a)}>
-                          <div className="nm">{patientName(a)}</div>
-                          <div>
-                            {fmtTime(a.start_at, tz)} · {a.appointment_type}
-                          </div>
-                          <div>
-                            <span aria-hidden="true">{STATUS_ICON[a.status] ?? '○'}</span> {humanize(a.status)}
-                            {a.provider_ids.length > 0 && ` · ${a.provider_ids.map((id) => providers.find((p) => p.id === id)?.display_name ?? '').join(', ')}`}
-                          </div>
+                        <button
+                          key={a.id}
+                          className={`appt st-${a.status}${lines < 3 ? ' compact' : ''}`}
+                          style={{ top, height: h }}
+                          title={`${patientName(a)} · ${when} · ${humanize(a.status)}${who ? ` · ${who}` : ''}`}
+                          onClick={() => setSelected(a)}
+                        >
+                          {lines === 3 ? (
+                            <>
+                              <div className="nm">{patientName(a)}</div>
+                              <div>{when}</div>
+                              <div>
+                                {status}
+                                {who && ` · ${who}`}
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div>
+                                <span className="nm">{patientName(a)}</span> · {status}
+                              </div>
+                              {lines === 2 && (
+                                <div>
+                                  {when}
+                                  {who && ` · ${who}`}
+                                </div>
+                              )}
+                            </>
+                          )}
                         </button>
                       );
                     })}
