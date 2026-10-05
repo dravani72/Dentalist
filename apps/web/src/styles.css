@@ -237,3 +237,27 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 tr.reversed td:nth-child(n+2) .money, tr.reversed td:nth-child(4) > :first-child { text-decoration: line-through; }
 .timeline { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 2px; color: var(--muted); }
 tfoot th { border-top: 1.5px solid var(--line); border-bottom: 0; color: var(--fg); }
+
+/* ---------------------------------------------------------------- practice setup */
+p.warn { background: var(--warn-bg); border: 1.5px dashed var(--c-planned); border-radius: 6px; padding: 8px 10px; margin: 0; }
+.privs { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+.privs legend { font-weight: 700; margin-bottom: 6px; }
+.privgroup { display: grid; gap: 4px; align-content: start; background: var(--sunken); border-radius: 6px; padding: 10px 12px; }
+.privgroup h3 { margin-bottom: 2px; }
+.privline { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: start; font-size: 14px; }
+.privline input { margin-top: 3px; }
+/* Changes from the template carry a word and a sign, not just a color. */
+.tag { font-size: 11px; font-weight: 700; border: 1.5px dashed var(--muted); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+.secret { font-size: 17px; letter-spacing: .06em; background: var(--sunken); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; word-break: break-all; }
+.login.wide-login { max-width: 560px; }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 14px; }
+.steps li { display: grid; gap: 8px; }
+.hours { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
+.hours p { margin: 0; }
+.hours .lbl { font-weight: 700; }
+.weekgrid { display: grid; gap: 6px; }
+.dayrow { border: 0; border-bottom: 1px solid var(--line); margin: 0; padding: 4px 0 8px; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.dayrow legend { float: left; width: 110px; font-weight: 700; padding: 0; }
+.dayrow .block { display: inline-flex; gap: 6px; align-items: center; }
+.hours > .btn { justify-self: start; }
+.formgrid fieldset legend.lbl { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 0; }

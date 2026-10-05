@@ -66,12 +66,17 @@ export const CREDENTIALED_PRIVILEGES: readonly Privilege[] = [
   'prescription.sign_controlled',
 ];
 
-/** Actions that require a fresh step-up authentication (passkey/TOTP) inside the session. */
+/**
+ * Actions that require a fresh step-up authentication (passkey/TOTP) inside the session. For
+ * admin.staff only the security-sensitive changes ask for it, not every staff-list read.
+ */
 export const STEP_UP_PRIVILEGES: readonly Privilege[] = [
   'encounter.sign',
   'prescription.sign_noncontrolled',
   'prescription.sign_controlled',
   'security.break_glass',
+  /** Privilege grants, credential verification and sign-in resets. */
+  'admin.staff',
 ];
 
 export const STEP_UP_WINDOW_SECONDS = 300;

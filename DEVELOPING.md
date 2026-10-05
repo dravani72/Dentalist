@@ -41,6 +41,7 @@ code for `.test` accounts (the dev endpoint refuses anything else and is off in 
 | frank.ito@maple.example.test | Front desk | schedule, demographics, insurance, takes payments; no clinical actions |
 | bea.carter@maple.example.test | Billing | charges, adjustments, claims, fee schedules (fee_schedule.manage granted in the fixture) |
 | cora.webb@maple.example.test | Compliance officer | audit log, access reports, break-glass |
+| pat.morgan@maple.example.test | Practice manager | Staff tab: add staff, privileges, licenses, working hours, time off, sign-in resets |
 | omar.khan@riverbend.example.test | Dentist, second practice | used to prove tenant isolation |
 
 ### Patient portal

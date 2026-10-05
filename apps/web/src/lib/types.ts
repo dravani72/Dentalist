@@ -13,6 +13,7 @@ export interface Staff {
   id: string;
   display_name: string;
   role_template: string;
+  provider_kind: 'dentist' | 'hygienist' | null;
 }
 
 export interface PatientRow {

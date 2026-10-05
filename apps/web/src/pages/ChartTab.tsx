@@ -313,7 +313,7 @@ function AddEntryForm(props: {
   const [planStatus, setPlanStatus] = useState('PROPOSED');
   const [priority, setPriority] = useState('routine');
   const [fromPlan, setFromPlan] = useState('');
-  const clinicians = staff.filter((s) => ['dentist', 'hygienist'].includes(s.role_template));
+  const clinicians = staff.filter((s) => s.provider_kind != null);
   const [performedBy, setPerformedBy] = useState(clinicians.some((c) => c.id === meId) ? meId : clinicians[0]?.id ?? '');
   const [details, setDetails] = useState<Record<string, string | boolean>>({});
   const [anesthetic, setAnesthetic] = useState({ drug: '', concentration: '', amountMl: '', route: '' });

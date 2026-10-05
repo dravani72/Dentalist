@@ -58,11 +58,12 @@ export function canSignConsent(relationship: PortalRelationship, dateOfBirth: st
   return { ok: true };
 }
 
-/** Business hours used for online booking until provider schedule templates exist. */
+/**
+ * Online booking limits. Which times are offered comes from each provider's working hours and
+ * time off (set in practice setup); these only bound the search.
+ */
 export const ONLINE_BOOKING = {
-  /** Clinic-local hours, Monday to Friday. */
-  openMinute: 8 * 60,
-  closeMinute: 17 * 60,
+  /** Offered start times fall on this grid of clinic-local minutes from midnight. */
   stepMinutes: 30,
   /** Earliest bookable time: no same-day online bookings. */
   minLeadHours: 24,

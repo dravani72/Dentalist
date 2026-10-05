@@ -121,7 +121,7 @@ export class ChartService {
           [id],
         ),
         tx.query('SELECT id, reason, status, started_by, started_at, amended_at, changed_fields FROM amendment WHERE encounter_id = $1 ORDER BY started_at', [id]),
-        tx.query('SELECT id, display_name, role_template FROM staff_member'),
+        tx.query('SELECT id, display_name, role_template, provider_kind FROM staff_member'),
       ]);
       await this.audit.record(tx, actor, { action: 'encounter.read', objectType: 'encounter', objectId: id, patientId: e.patient_id });
       return { encounter: e, entries, versions, amendments, staff };
@@ -165,7 +165,7 @@ export class ChartService {
           ' ORDER BY e.phase, e.recorded_at',
         [patientId],
       );
-      const staff = await tx.query('SELECT id, display_name, role_template FROM staff_member');
+      const staff = await tx.query('SELECT id, display_name, role_template, provider_kind FROM staff_member');
       await this.audit.record(tx, actor, { action: 'chart.read', objectType: 'patient', objectId: patientId, patientId });
       return { patientId, visits, openTreatmentPlan: plan, staff };
     });

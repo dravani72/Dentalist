@@ -22,6 +22,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | PHI-safe logging | `apps/api/src/common/phi-scrub.ts`, `logger.ts` |
 | Patient portal, delegated access, secure messaging, consents | 0006; `apps/api/src/portal/*`; `apps/web/src/pages/portal/*`, `PortalAccessTab.tsx`, `PortalInbox.tsx`; details in `patient-portal.md` |
 | Revenue cycle: fees, ledger, insurance, estimates, claims, remittance | 0007; `apps/api/src/billing/*` (`ClearinghousePartner`, `FakeClearinghouse`); `packages/shared/src/billing.ts`; `apps/web/src/pages/billing/*`, portal `billing.tsx`; details in `revenue-cycle.md` |
+| Practice setup: staff, privileges, licenses, provider hours, first sign-in | 0008; `apps/api/src/admin/*`, `src/scheduling/availability.ts`; `packages/shared/src/staff.ts`; `apps/web/src/pages/admin/*`, `AccountSetup.tsx`; details in `practice-setup.md` |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
 ## Deliberate deviations
@@ -46,12 +47,14 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
   `TG_ARGV` is NULL when no arguments are passed). The guard now defaults to "everything frozen"; a test proves a
   direct UPDATE on a signed finding fails.
 - A plan item fulfilled by a procedure now records which procedure fulfilled it.
+- The outbox worker's polling timer let a failed poll (for example during a database reset) crash the API with an
+  unhandled rejection. Failed polls are now logged and retried on the next tick.
 - DATE columns are returned as `YYYY-MM-DD` strings, so a date of birth can never shift by a day across time zones.
 
 ## Not built yet
 
 - Portal pieces still missing: online payment (needs a payment processor choice), referral and document downloads,
-  SMS sign-in codes. Provider schedule templates (online booking uses fixed weekday hours for now).
+  SMS sign-in codes.
   Intake questionnaires beyond the health-history update request. Spanish translations of portal text.
 - Revenue cycle gaps: a real clearinghouse adapter (needs a contract and BAA), claim attachments (x-rays,
   narratives), predeterminations, coordination of benefits on secondary claims (secondary estimates ignore the
@@ -61,8 +64,9 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 - Production adapters: Cognito, KMS, S3, SQS, DoseSpot. Terraform is a skeleton and has never been applied.
 - Backup/restore drills and monitoring (MVP item 12 covers tenant isolation, access control and PHI-safe logging
   in tests; backup/restore needs the AWS environment).
-- Staff and user administration screens (accounts are created by the seed script).
-- TOTP replay prevention (Cognito covers it in production).
+- Practice-level setup beyond staff: adding locations, operatories and appointment types still happens in the
+  seed script or SQL. Operatory hours and holidays (provider time off covers closures for now).
+- A QR code on the first sign-in page (it shows the key and an `otpauth://` link instead).
 - Primary teeth on the odontogram (the anatomy model and API support them; the drawing shows permanent teeth).
 
 ## Known quirks of the seed

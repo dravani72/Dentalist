@@ -18,6 +18,7 @@ import { ERX_PARTNER, ErxPartner, PharmacyDirectoryEntry } from '../prescribing/
 import { PortalActor, PortalGrant, portalScope } from './portal-actor';
 import { PortalAudit } from './portal-audit';
 import { accountSummary, ledgerRows, planEstimate } from '../billing/ledger';
+import { loadAvailability } from '../scheduling/availability';
 import { ONLINE_BOOKING, ageOn, canSignConsent, renderConsent } from './portal-rules';
 
 const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
@@ -183,9 +184,10 @@ export class PortalService {
     if (!type) throw notFound('Bookable appointment type');
     const loc = await tx.one<{ time_zone: string }>('SELECT time_zone FROM location WHERE id = $1', [locationId]);
     if (!loc) throw notFound('Location');
+    // Provider kind is set by an administrator per staff member, never read off a job title.
     const kinds = type.provider_kind === 'either' ? ['dentist', 'hygienist'] : [type.provider_kind];
     const [providers, operatories] = await Promise.all([
-      tx.query<{ id: string }>('SELECT id FROM staff_member WHERE active AND $1 = ANY(location_ids) AND role_template = ANY($2) ORDER BY display_name', [locationId, kinds]),
+      tx.query<{ id: string }>('SELECT id FROM staff_member WHERE active AND $1 = ANY(location_ids) AND provider_kind = ANY($2) ORDER BY display_name', [locationId, kinds]),
       tx.query<{ id: string }>('SELECT id FROM operatory WHERE location_id = $1 AND active ORDER BY name', [locationId]),
     ]);
     const from = new Date(Date.now() + ONLINE_BOOKING.minLeadHours * 3600_000);
@@ -196,18 +198,20 @@ export class PortalService {
         WHERE active AND resource_id = ANY($1) AND during && tstzrange($2, $3)`,
       [ids, from, until],
     );
+    const firstDay = localDate(from, loc.time_zone);
+    const lastDay = localDate(until, loc.time_zone);
+    const hours = await loadAvailability(tx, locationId, providers.map((p) => p.id), firstDay, lastDay, from, until);
     const free = (id: string, s: number, e: number) => !busy.some((b) => b.resource_id === id && b.s.getTime() < e && b.e.getTime() > s);
     const slots: { start: string; end: string; providerId: string; operatoryId: string }[] = [];
-    for (let d = 0; d <= ONLINE_BOOKING.horizonDays && slots.length < ONLINE_BOOKING.maxSlots; d++) {
+    for (let d = 0; d <= ONLINE_BOOKING.horizonDays + 1 && slots.length < ONLINE_BOOKING.maxSlots; d++) {
       const day = localDate(new Date(from.getTime() + d * 86400_000), loc.time_zone);
-      const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
-      if (weekday === 0 || weekday === 6) continue;
-      for (let m = ONLINE_BOOKING.openMinute; m + type.chair_minutes <= ONLINE_BOOKING.closeMinute; m += ONLINE_BOOKING.stepMinutes) {
+      if (day > lastDay) break;
+      for (let m = 0; m + type.chair_minutes <= 24 * 60; m += ONLINE_BOOKING.stepMinutes) {
         const s = zonedToUtc(day, m, loc.time_zone).getTime();
         const e = s + type.chair_minutes * 60_000;
         if (s < from.getTime() || e > until.getTime() || !free(patientId, s, e)) continue;
-        const provider = providers.find((p) => free(p.id, s, e));
-        const operatory = operatories.find((o) => free(o.id, s, e));
+        const provider = providers.find((p) => hours.works(p.id, day, m, m + type.chair_minutes, s, e) && free(p.id, s, e));
+        const operatory = provider && operatories.find((o) => free(o.id, s, e));
         if (provider && operatory) {
           slots.push({ start: new Date(s).toISOString(), end: new Date(e).toISOString(), providerId: provider.id, operatoryId: operatory.id });
           if (slots.length >= ONLINE_BOOKING.maxSlots) break;

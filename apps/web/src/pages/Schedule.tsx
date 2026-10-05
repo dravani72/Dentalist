@@ -9,7 +9,9 @@ import type { PatientRow } from '../lib/types';
 interface Ref {
   location: { id: string; name: string; time_zone: string; state: string };
   operatories: { id: string; name: string }[];
-  providers: { id: string; display_name: string; role_template: string }[];
+  providers: { id: string; display_name: string; provider_kind: 'dentist' | 'hygienist' }[];
+  hours: { staff_member_id: string; weekday: number; start_minute: number; end_minute: number; effective_from: string; effective_to: string | null }[];
+  timeOff: { staff_member_id: string; start: string; end: string }[];
   appointmentTypes: { id: string; name: string; chair_minutes: number; provider_minutes: number; provider_kind: string }[];
 }
 interface Appt {
@@ -164,7 +166,9 @@ function BookForm({ refData, date, tz, initial, onClose }: { refData: Ref; date:
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [typeId, setTypeId] = useState(refData.appointmentTypes[0]?.id ?? '');
   const type = refData.appointmentTypes.find((t) => t.id === typeId);
-  const eligible = refData.providers.filter((p) => !type || p.role_template === type.provider_kind || (type.provider_kind === 'hygienist' && p.role_template === 'dentist'));
+  const eligible = refData.providers.filter(
+    (p) => !type || type.provider_kind === 'either' || p.provider_kind === type.provider_kind || (type.provider_kind === 'hygienist' && p.provider_kind === 'dentist'),
+  );
   const [providerId, setProviderId] = useState(eligible[0]?.id ?? '');
   const [operatoryId, setOperatoryId] = useState(initial.operatoryId);
   const [time, setTime] = useState(initial.time);
@@ -260,6 +264,7 @@ function BookForm({ refData, date, tz, initial, onClose }: { refData: Ref; date:
           <input id="bk-min" type="number" min={10} step={5} value={duration} onChange={(e) => setMinutes(Number(e.target.value))} />
         </div>
       </div>
+      <HoursWarning refData={refData} providerId={providerId || eligible[0]?.id} date={date} time={time} minutes={duration} tz={tz} />
       {book.error && <div className="err">{errorText(book.error)}</div>}
       <div>
         <button className="btn primary" disabled={!patient || book.isPending}>
@@ -267,6 +272,32 @@ function BookForm({ refData, date, tz, initial, onClose }: { refData: Ref; date:
         </button>
       </div>
     </form>
+  );
+}
+
+/** Staff may book outside working hours (late patients, emergencies), but should see that they are. */
+function HoursWarning({ refData, providerId, date, time, minutes, tz }: { refData: Ref; providerId?: string; date: string; time: string; minutes: number; tz: string }) {
+  if (!providerId || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const name = refData.providers.find((p) => p.id === providerId)?.display_name ?? 'This provider';
+  const [h, m] = time.split(':').map(Number) as [number, number];
+  const startMin = h * 60 + m;
+  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const blocks = refData.hours.filter(
+    (b) => b.staff_member_id === providerId && b.weekday === weekday && b.effective_from <= date && (!b.effective_to || b.effective_to >= date),
+  );
+  const start = new Date(zonedToIso(date, time, tz)).getTime();
+  const end = start + minutes * 60_000;
+  const off = refData.timeOff.some((t) => t.staff_member_id === providerId && new Date(t.start).getTime() < end && new Date(t.end).getTime() > start);
+  let text = '';
+  if (off) text = `${name} has time off then.`;
+  else if (!blocks.some((b) => b.start_minute <= startMin && startMin + minutes <= b.end_minute))
+    text = blocks.length ? `Outside ${name}’s working hours that day.` : `${name} does not work at this location that day.`;
+  if (!text) return null;
+  return (
+    <p className="warn" role="status">
+      <span aria-hidden="true">⚠ </span>
+      {text} You can still book it.
+    </p>
   );
 }
 

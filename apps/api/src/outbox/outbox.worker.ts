@@ -60,7 +60,11 @@ export class OutboxWorker implements OnModuleDestroy {
   ) {}
 
   start(intervalMs = 1000) {
-    this.timer = setInterval(() => void this.runOnce(), intervalMs);
+    // A failed poll (database restarting, a migration in progress) is logged and retried on the
+    // next tick; it must never take the API process down with an unhandled rejection.
+    this.timer = setInterval(() => {
+      this.runOnce().catch((err) => logger.error({ msg: 'outbox poll failed', err }, undefined, 'Outbox'));
+    }, intervalMs);
   }
 
   onModuleDestroy() {

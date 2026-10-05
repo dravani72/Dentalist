@@ -24,6 +24,10 @@ import { FakeErxPartner } from './prescribing/fake-erx-partner';
 import { PrescribingService } from './prescribing/prescribing.service';
 import { PrescribingController } from './prescribing/prescribing.controller';
 import { LogOnlyMessageSender, MESSAGE_SENDER, OutboxWorker } from './outbox/outbox.worker';
+import { TOTP_CLOCK } from './crypto/totp';
+import { StaffAdminService } from './admin/staff-admin.service';
+import { AccountSetupService } from './admin/account-setup.service';
+import { AccountSetupController, StaffAdminController } from './admin/staff-admin.controller';
 import { CLEARINGHOUSE } from './billing/clearinghouse';
 import { FakeClearinghouse } from './billing/fake-clearinghouse';
 import { BillingService } from './billing/billing.service';
@@ -41,6 +45,8 @@ export interface AppOverrides {
   erxPartner?: unknown;
   messageSender?: unknown;
   clearinghouse?: unknown;
+  /** Clock for authenticator checks (tests only). */
+  totpClock?: (userId: string) => number;
 }
 
 /**
@@ -61,6 +67,7 @@ export class AppModule {
       { provide: ERX_PARTNER, useValue: overrides.erxPartner ?? new FakeErxPartner() },
       { provide: CLEARINGHOUSE, useValue: overrides.clearinghouse ?? new FakeClearinghouse() },
       { provide: MESSAGE_SENDER, useValue: overrides.messageSender ?? new LogOnlyMessageSender() },
+      { provide: TOTP_CLOCK, useValue: overrides.totpClock ?? ((_userId: string) => Date.now()) },
       { provide: APP_GUARD, useClass: SessionGuard },
       { provide: APP_FILTER, useClass: ErrorFilter },
       DbService,
@@ -81,6 +88,8 @@ export class AppModule {
       PortalGuard,
       PortalService,
       PortalStaffService,
+      StaffAdminService,
+      AccountSetupService,
     ];
     const devTools = config.devTools && process.env.NODE_ENV !== 'production';
     return {
@@ -97,6 +106,8 @@ export class AppModule {
         PortalAuthController,
         PortalController,
         PortalStaffController,
+        StaffAdminController,
+        AccountSetupController,
         ...(devTools ? [DevController, PortalDevController] : []),
       ],
       providers,

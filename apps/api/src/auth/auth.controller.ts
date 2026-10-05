@@ -7,7 +7,7 @@ import { notFound } from '../common/errors';
 import { DbService } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { FIELD_CIPHER, FieldCipher } from '../crypto/keys';
-import { totpCode } from '../crypto/totp';
+import { totpCode, totpStep } from '../crypto/totp';
 import { AccessService } from './access.service';
 import { AuthService } from './auth.service';
 import { CorrelationId, CurrentActor, Public } from './auth.guard';
@@ -107,9 +107,16 @@ export class DevController {
   async totp(@Query('email') email: string) {
     if (!email || !email.toLowerCase().endsWith('.test')) throw notFound('Synthetic user');
     const u = await this.db.tx({ orgId: null }, (tx) =>
-      tx.one<{ id: string; totp_secret_enc: string }>('SELECT id, totp_secret_enc FROM user_account WHERE lower(email) = lower($1)', [email]),
+      tx.one<{ id: string; totp_secret_enc: string; totp_last_step: string | null; setup_required: boolean }>(
+        'SELECT id, totp_secret_enc, totp_last_step, setup_required FROM user_account WHERE lower(email) = lower($1)',
+        [email],
+      ),
     );
-    if (!u) throw notFound('Synthetic user');
-    return { code: totpCode(this.cipher.decrypt(u.totp_secret_enc, `totp:${u.id}`)) };
+    if (!u || u.setup_required) throw notFound('Synthetic user');
+    // Each code works once, so hand out the next unused one (the server accepts one step ahead).
+    const now = totpStep();
+    const step = Math.max(now, u.totp_last_step === null ? now : Number(u.totp_last_step) + 1);
+    if (step > now + 1) return { code: null, waitSeconds: (step - 1) * 30 - Math.floor(Date.now() / 1000) };
+    return { code: totpCode(this.cipher.decrypt(u.totp_secret_enc, `totp:${u.id}`), step * 30_000) };
   }
 }

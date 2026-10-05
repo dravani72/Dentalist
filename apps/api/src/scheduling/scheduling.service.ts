@@ -33,14 +33,28 @@ export class SchedulingService {
         tx.one('SELECT id, name, time_zone, state FROM location WHERE id = $1', [locationId]),
         tx.query('SELECT id, name FROM operatory WHERE location_id = $1 AND active ORDER BY name', [locationId]),
         tx.query(
-          `SELECT s.id, s.display_name, s.role_template FROM staff_member s
-            WHERE s.active AND $1 = ANY(s.location_ids) AND s.role_template IN ('dentist', 'hygienist')
-            ORDER BY s.role_template, s.display_name`,
+          `SELECT s.id, s.display_name, s.provider_kind FROM staff_member s
+            WHERE s.active AND $1 = ANY(s.location_ids) AND s.provider_kind IS NOT NULL
+            ORDER BY s.provider_kind, s.display_name`,
           [locationId],
         ),
         tx.query('SELECT id, name, chair_minutes, provider_minutes, provider_kind FROM appointment_type WHERE active ORDER BY name'),
       ]);
-      return { location, operatories, providers, appointmentTypes: types };
+      // Working hours and time off, so the booking form can warn about times outside them.
+      const [hours, timeOff] = await Promise.all([
+        tx.query(
+          `SELECT staff_member_id, weekday, start_minute, end_minute, effective_from, effective_to FROM provider_hours
+            WHERE location_id = $1 AND superseded_at IS NULL AND (effective_to IS NULL OR effective_to >= current_date - 1)`,
+          [locationId],
+        ),
+        tx.query(
+          `SELECT t.staff_member_id, lower(t.during) AS start, upper(t.during) AS "end" FROM provider_time_off t
+            JOIN staff_member s ON s.id = t.staff_member_id
+           WHERE t.cancelled_at IS NULL AND upper(t.during) > now() - interval '1 day' AND $1 = ANY(s.location_ids)`,
+          [locationId],
+        ),
+      ]);
+      return { location, operatories, providers, appointmentTypes: types, hours, timeOff };
     });
   }
 
