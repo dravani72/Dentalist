@@ -122,6 +122,11 @@ export class PortalController {
     return this.portal.treatmentPlan(a, pid);
   }
 
+  @Get('patients/:pid/billing')
+  billing(@CurrentPortalActor() a: PortalActor, @Param('pid', ParseUUIDPipe) pid: string) {
+    return this.portal.billing(a, pid);
+  }
+
   @Get('patients/:pid/health')
   health(@CurrentPortalActor() a: PortalActor, @Param('pid', ParseUUIDPipe) pid: string) {
     return this.portal.health(a, pid);

@@ -12,7 +12,8 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "db:reset": "tsx src/scripts/migrate.ts --reset && tsx src/scripts/seed.ts",
     "verify:integrity": "tsx src/scripts/verify-integrity.ts",
-    "worker": "tsx src/scripts/worker.ts"
+    "worker": "tsx src/scripts/worker.ts",
+    "codes:load": "tsx src/scripts/load-codes.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.0",

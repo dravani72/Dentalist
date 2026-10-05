@@ -17,6 +17,7 @@ import { conflict, forbidden, invalid, notFound } from '../common/errors';
 import { ERX_PARTNER, ErxPartner, PharmacyDirectoryEntry } from '../prescribing/erx-partner';
 import { PortalActor, PortalGrant, portalScope } from './portal-actor';
 import { PortalAudit } from './portal-audit';
+import { accountSummary, ledgerRows, planEstimate } from '../billing/ledger';
 import { ONLINE_BOOKING, ageOn, canSignConsent, renderConsent } from './portal-rules';
 
 const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
@@ -78,7 +79,7 @@ export class PortalService {
         const p = patients.find((x) => x.id === g.patientId);
         if (!p) continue;
         const has = (s: PortalScope) => g.scopes.includes(s);
-        const [next, unread, forms, openRequests] = await Promise.all([
+        const [next, unread, forms, openRequests, account] = await Promise.all([
           has('appointments')
             ? tx.one(
                 `SELECT a.id, a.start_at, a.status, a.confirmation_state, t.name AS appointment_type, l.name AS location_name, l.time_zone
@@ -94,6 +95,7 @@ export class PortalService {
           has('requests')
             ? tx.one<{ n: number }>("SELECT count(*)::int AS n FROM portal_request WHERE patient_id = $1 AND status IN ('submitted', 'in_review')", [p.id])
             : undefined,
+          has('billing') ? accountSummary(tx, p.id) : undefined,
         ]);
         out.push({
           patientId: p.id,
@@ -108,6 +110,7 @@ export class PortalService {
           unreadMessages: unread?.n ?? null,
           pendingForms: forms?.n ?? null,
           openRequests: openRequests?.n ?? null,
+          amountDueCents: account ? Math.max(0, account.patientDueCents) : null,
         });
       }
       await this.audit.record(tx, actor, { action: 'portal.home', details: { patientCount: out.length } });
@@ -313,6 +316,42 @@ export class PortalService {
       );
       await this.audit.record(tx, actor, { action: 'portal.treatment_plan.read', objectType: 'patient', objectId: patientId, patientId });
       return rows.map((r) => ({ ...r, label: procedureLabel(r.procedure_concept) }));
+    });
+  }
+
+  // ------------------------------------------------------------------ billing
+
+  /**
+   * Balance, account activity, insurance claims and a cost estimate for signed plan items.
+   * Internal notes and who posted an entry stay staff-side. No online payment until the practice
+   * chooses a payment processor.
+   */
+  async billing(actor: PortalActor, patientId: string) {
+    await this.grant(actor, patientId, 'billing', 'portal.billing.read');
+    return this.tx(actor, async (tx) => {
+      const summary = await accountSummary(tx, patientId);
+      const activity = (await ledgerRows(tx, patientId)).map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        date: r.entry_date,
+        description: r.kind === 'adjustment' && r.adjustment_reason !== 'contractual' ? (r.amount_cents < 0 ? 'Adjustment (credit)' : 'Adjustment') : r.description,
+        tooth: r.tooth,
+        amountCents: r.amount_cents,
+        reversed: !!r.reversed_by,
+      }));
+      const claims = await tx.query(
+        `SELECT c.id, c.status, c.service_date, py.name AS payer_name,
+                (SELECT coalesce(sum(fee_cents), 0)::int FROM claim_line WHERE claim_id = c.id) AS billed_cents,
+                (SELECT coalesce(sum(est_insurance_cents), 0)::int FROM claim_line WHERE claim_id = c.id) AS est_insurance_cents,
+                (SELECT sum(paid_cents)::int FROM claim_line WHERE claim_id = c.id) AS paid_cents
+           FROM claim c JOIN payer py ON py.id = c.payer_id
+          WHERE c.patient_id = $1 AND c.status <> 'draft' AND c.status <> 'void' ORDER BY c.service_date DESC LIMIT 20`,
+        [patientId],
+      );
+      const estimate = await planEstimate(tx, patientId, { signedOnly: true, today: new Date().toISOString().slice(0, 10) });
+      const contact = await tx.one<{ phone: string | null }>('SELECT l.phone FROM patient p JOIN location l ON l.id = p.home_location_id WHERE p.id = $1', [patientId]);
+      await this.audit.record(tx, actor, { action: 'portal.billing.read', objectType: 'patient', objectId: patientId, patientId });
+      return { summary, activity: activity.reverse(), claims, estimate, officePhone: contact?.phone ?? null };
     });
   }
 

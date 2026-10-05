@@ -24,6 +24,11 @@ import { FakeErxPartner } from './prescribing/fake-erx-partner';
 import { PrescribingService } from './prescribing/prescribing.service';
 import { PrescribingController } from './prescribing/prescribing.controller';
 import { LogOnlyMessageSender, MESSAGE_SENDER, OutboxWorker } from './outbox/outbox.worker';
+import { CLEARINGHOUSE } from './billing/clearinghouse';
+import { FakeClearinghouse } from './billing/fake-clearinghouse';
+import { BillingService } from './billing/billing.service';
+import { ClaimsService } from './billing/claims.service';
+import { BillingController } from './billing/billing.controller';
 import { PortalAudit } from './portal/portal-audit';
 import { PortalAuthService } from './portal/portal-auth.service';
 import { PortalGuard } from './portal/portal-actor';
@@ -35,6 +40,7 @@ export interface AppOverrides {
   config?: Partial<AppConfig>;
   erxPartner?: unknown;
   messageSender?: unknown;
+  clearinghouse?: unknown;
 }
 
 /**
@@ -53,6 +59,7 @@ export class AppModule {
       { provide: RECORD_SIGNER, useValue: new LocalRecordSigner(config.localKeyDir) },
       { provide: MEDIA_STORAGE, useValue: new LocalEncryptedStorage(config.localMediaDir, cipher) },
       { provide: ERX_PARTNER, useValue: overrides.erxPartner ?? new FakeErxPartner() },
+      { provide: CLEARINGHOUSE, useValue: overrides.clearinghouse ?? new FakeClearinghouse() },
       { provide: MESSAGE_SENDER, useValue: overrides.messageSender ?? new LogOnlyMessageSender() },
       { provide: APP_GUARD, useClass: SessionGuard },
       { provide: APP_FILTER, useClass: ErrorFilter },
@@ -66,6 +73,8 @@ export class AppModule {
       SigningService,
       MediaService,
       PrescribingService,
+      BillingService,
+      ClaimsService,
       OutboxWorker,
       PortalAudit,
       PortalAuthService,
@@ -84,6 +93,7 @@ export class AppModule {
         MediaController,
         PrescribingController,
         AuditController,
+        BillingController,
         PortalAuthController,
         PortalController,
         PortalStaffController,

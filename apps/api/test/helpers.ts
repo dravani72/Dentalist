@@ -9,6 +9,7 @@ import { createApp } from '../src/main';
 import { migrate } from '../src/scripts/migrate';
 import { FakeErxPartner } from '../src/prescribing/fake-erx-partner';
 import { LogOnlyMessageSender } from '../src/outbox/outbox.worker';
+import { FakeClearinghouse } from '../src/billing/fake-clearinghouse';
 import { MAPLE, RIVERBEND, SYNTHETIC_PASSWORD, Tenant, createTenant } from '../src/scripts/fixtures';
 
 export const TEST_DB = process.env.TEST_DATABASE_URL ?? 'postgres://teeth_app:teeth_app_dev@localhost:5432/teeth_test';
@@ -22,6 +23,7 @@ export interface World {
   river: Tenant;
   partner: FakeErxPartner;
   sender: LogOnlyMessageSender;
+  clearinghouse: FakeClearinghouse;
   login(t: Tenant, key: string): Promise<Session>;
   close(): Promise<void>;
 }
@@ -47,7 +49,13 @@ export async function setupWorld(): Promise<World> {
   const partner = new FakeErxPartner();
   partner.callbackDelayMs = 10;
   const sender = new LogOnlyMessageSender();
-  const app = await createApp({ config: { databaseUrl: TEST_DB, databaseOwnerUrl: TEST_OWNER_DB, devTools: false }, erxPartner: partner, messageSender: sender });
+  const clearinghouse = new FakeClearinghouse();
+  const app = await createApp({
+    config: { databaseUrl: TEST_DB, databaseOwnerUrl: TEST_OWNER_DB, devTools: false, claimPollSeconds: 0 },
+    erxPartner: partner,
+    messageSender: sender,
+    clearinghouse,
+  });
   await app.init();
   const http = request(app.getHttpServer());
 
@@ -76,6 +84,7 @@ export async function setupWorld(): Promise<World> {
     river,
     partner,
     sender,
+    clearinghouse,
     login,
     async close() {
       await app.close();

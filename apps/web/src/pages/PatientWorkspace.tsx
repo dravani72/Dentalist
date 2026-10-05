@@ -8,12 +8,14 @@ import { ChartTab } from './ChartTab';
 import { HistoryTab } from './HistoryTab';
 import { PrescriptionsTab } from './PrescriptionsTab';
 import { PortalAccessTab } from './PortalAccessTab';
+import { BillingTab } from './billing/BillingTab';
 
-type Tab = 'chart' | 'history' | 'rx' | 'portal' | 'access';
+type Tab = 'chart' | 'history' | 'rx' | 'billing' | 'portal' | 'access';
+const TABS: readonly string[] = ['chart', 'history', 'rx', 'billing', 'portal', 'access'];
 
-export function PatientWorkspace({ patientId }: { patientId: string }) {
+export function PatientWorkspace({ patientId, initialTab }: { patientId: string; initialTab?: string }) {
   const { can } = useSession();
-  const [tab, setTab] = useState<Tab>('chart');
+  const [tab, setTab] = useState<Tab>(initialTab && TABS.includes(initialTab) ? (initialTab as Tab) : 'chart');
   const detail = useQuery({ queryKey: ['patient', patientId], queryFn: () => api.get<PatientDetail>(`/patients/${patientId}`), retry: false });
 
   if (detail.error) {
@@ -29,8 +31,9 @@ export function PatientWorkspace({ patientId }: { patientId: string }) {
     ['chart', 'Chart'],
     ['history', 'Medical history'],
     ['rx', 'Prescriptions'],
-    ['portal', 'Portal & forms'],
   ];
+  if (can('billing.read')) tabs.push(['billing', 'Billing']);
+  tabs.push(['portal', 'Portal & forms']);
   if (can('audit.read')) tabs.push(['access', 'Who viewed this chart']);
   return (
     <>
@@ -45,6 +48,7 @@ export function PatientWorkspace({ patientId }: { patientId: string }) {
       {tab === 'chart' && <ChartTab patientId={patientId} patient={d} />}
       {tab === 'history' && <HistoryTab patientId={patientId} d={d} />}
       {tab === 'rx' && <PrescriptionsTab patientId={patientId} d={d} />}
+      {tab === 'billing' && can('billing.read') && <BillingTab patientId={patientId} />}
       {tab === 'portal' && <PortalAccessTab patientId={patientId} d={d} />}
       {tab === 'access' && <AccessReport patientId={patientId} />}
     </>

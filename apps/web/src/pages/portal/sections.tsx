@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatCents } from '@teeth/shared';
 import { errorText, portal } from '../../lib/api';
 import { fmtDate, fmtStamp, humanize } from '../../lib/format';
 import { go } from '../../lib/router';
@@ -9,7 +10,7 @@ import { PLAN_STATUS, RELATIONSHIP_LABEL, REQUEST_KIND_LABEL, Status, appointmen
 const api = portal.api;
 
 /** Queries are keyed under 'portal' and the patient, so switching person never shows stale data. */
-function usePortalQuery<T>(p: PortalPatient, key: string, path: string, enabled = true) {
+export function usePortalQuery<T>(p: PortalPatient, key: string, path: string, enabled = true) {
   return useQuery({ queryKey: ['portal', p.patientId, key], queryFn: () => api.get<T>(path), enabled });
 }
 
@@ -38,7 +39,7 @@ function useAct() {
   };
 }
 
-function Loading<T>({ q, children }: { q: { data?: T; error: unknown; isLoading: boolean }; children: (d: T) => ReactNode }) {
+export function Loading<T>({ q, children }: { q: { data?: T; error: unknown; isLoading: boolean }; children: (d: T) => ReactNode }) {
   if (q.error) return <div className="err">{errorText(q.error)}</div>;
   if (q.isLoading || q.data === undefined) return <p className="muted">Loading…</p>;
   return <>{children(q.data)}</>;
@@ -85,6 +86,13 @@ export function Home({ p, me }: { p: PortalPatient; me: PortalMe }) {
           <h2>Forms</h2>
           <p>{p.pendingForms ? <Status kind="action">{`${p.pendingForms} waiting for a signature`}</Status> : 'Nothing to sign.'}</p>
           <a href="#/portal/forms">Open forms</a>
+        </section>
+      )}
+      {can(p, 'billing') && p.amountDueCents !== null && (
+        <section className="panel">
+          <h2>Billing</h2>
+          <p>{p.amountDueCents > 0 ? <Status kind="action">{`${formatCents(p.amountDueCents)} due`}</Status> : <Status kind="ok">Nothing due</Status>}</p>
+          <a href="#/portal/billing">See your account and estimates</a>
         </section>
       )}
       {can(p, 'requests') && (
@@ -448,7 +456,16 @@ export function Plan({ p }: { p: PortalPatient }) {
   return (
     <section className="panel">
       <h2>Treatment plan</h2>
-      <p className="hint">Treatment your dentist has recommended and signed. Ask the office if you would like a cost estimate.</p>
+      <p className="hint">
+        Treatment your dentist has recommended and signed.{' '}
+        {can(p, 'billing') ? (
+          <>
+            Your estimated cost is under <a href="#/portal/billing">Billing</a>.
+          </>
+        ) : (
+          'Ask the office if you would like a cost estimate.'
+        )}
+      </p>
       <Loading q={q}>
         {(rows) =>
           rows.length === 0 ? (

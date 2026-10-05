@@ -21,6 +21,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Async work | `outbox` table; `apps/api/src/outbox/outbox.worker.ts` |
 | PHI-safe logging | `apps/api/src/common/phi-scrub.ts`, `logger.ts` |
 | Patient portal, delegated access, secure messaging, consents | 0006; `apps/api/src/portal/*`; `apps/web/src/pages/portal/*`, `PortalAccessTab.tsx`, `PortalInbox.tsx`; details in `patient-portal.md` |
+| Revenue cycle: fees, ledger, insurance, estimates, claims, remittance | 0007; `apps/api/src/billing/*` (`ClearinghousePartner`, `FakeClearinghouse`); `packages/shared/src/billing.ts`; `apps/web/src/pages/billing/*`, portal `billing.tsx`; details in `revenue-cycle.md` |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
 ## Deliberate deviations
@@ -49,10 +50,12 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 
 ## Not built yet
 
-- Portal pieces that depend on modules not built yet: balances and payments, cost estimates, referral and document
-  downloads, SMS sign-in codes. Provider schedule templates (online booking uses fixed weekday hours for now).
+- Portal pieces still missing: online payment (needs a payment processor choice), referral and document downloads,
+  SMS sign-in codes. Provider schedule templates (online booking uses fixed weekday hours for now).
   Intake questionnaires beyond the health-history update request. Spanish translations of portal text.
-- Claims, eligibility, clearinghouse, remittance (Phase 5). `billing_code` tables exist and ship empty.
+- Revenue cycle gaps: a real clearinghouse adapter (needs a contract and BAA), claim attachments (x-rays,
+  narratives), predeterminations, coordination of benefits on secondary claims (secondary estimates ignore the
+  primary payment), claim status inquiry (276/277), statements by mail, payment plans, collections.
 - Perio charting, endo detail, oral surgery, lab cases, DICOM/CBCT viewing (Phase 6).
 - EPCS (Phase 7) and AI assistance (Phase 8).
 - Production adapters: Cognito, KMS, S3, SQS, DoseSpot. Terraform is a skeleton and has never been applied.

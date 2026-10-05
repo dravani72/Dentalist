@@ -7,6 +7,7 @@ const SYNTHETIC_USERS = [
   ['jane.smith@maple.example.test', 'Dental assistant'],
   ['rosa.diaz@maple.example.test', 'Hygienist'],
   ['frank.ito@maple.example.test', 'Front desk'],
+  ['bea.carter@maple.example.test', 'Billing'],
   ['cora.webb@maple.example.test', 'Compliance officer'],
 ];
 

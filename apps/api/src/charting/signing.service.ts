@@ -159,6 +159,12 @@ export class SigningService {
         "UPDATE encounter SET status = 'SIGNED', signed_by = $2, signed_at = now(), current_version_no = $3, version = version + 1 WHERE id = $1",
         [id, actor.staffId, versionNo],
       );
+      // Billing picks up the signed work: charges post automatically where a code and fee exist.
+      await tx.query("INSERT INTO outbox (org_id, topic, payload, idempotency_key) VALUES ($1, 'billing.post_charges', $2, $3)", [
+        actor.orgId,
+        JSON.stringify({ encounterId: id }),
+        `billing.post_charges:${id}:${versionNo}`,
+      ]);
       await this.audit.record(tx, actor, {
         action: amendment ? 'encounter.amendment_signed' : 'encounter.sign',
         objectType: 'encounter',

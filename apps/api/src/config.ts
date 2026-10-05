@@ -12,6 +12,8 @@ export interface AppConfig {
   sessionIdleMinutes: number;
   sessionAbsoluteHours: number;
   breakGlassMinutes: number;
+  /** How long after a claim is accepted to look for its remittance (then again, bounded). */
+  claimPollSeconds: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -27,6 +29,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionIdleMinutes: Number(env.SESSION_IDLE_MINUTES ?? 15),
     sessionAbsoluteHours: Number(env.SESSION_ABSOLUTE_HOURS ?? 12),
     breakGlassMinutes: Number(env.BREAK_GLASS_MINUTES ?? 60),
+    claimPollSeconds: Number(env.CLAIM_POLL_SECONDS ?? 1800),
   };
 }
 

@@ -7,3 +7,4 @@ export * from './canonical';
 export * from './schemas';
 export * from './reminders';
 export * from './portal';
+export * from './billing';

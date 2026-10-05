@@ -10,6 +10,7 @@ import { LocalFieldCipher } from '../crypto/keys';
 import { hashPassword } from '../crypto/password';
 import { generateTotpSecret } from '../crypto/totp';
 import type { Actor } from '../auth/actor';
+import { seedDemoBilling } from '../billing/code-loader';
 
 export const SYNTHETIC_PASSWORD = 'synthetic-dev-only';
 
@@ -37,6 +38,7 @@ export interface Tenant {
   locationId: string;
   operatoryIds: string[];
   appointmentTypes: Record<string, string>;
+  billing: Awaited<ReturnType<typeof seedDemoBilling>>;
   staff: Record<string, { staffId: string; userId: string; totpSecret: string; email: string; privileges: Privilege[]; name: string; role: string }>;
 }
 
@@ -100,7 +102,8 @@ export async function createTenant(owner: Client, cipher: LocalFieldCipher, spec
     }
     staff[s.key] = { staffId, userId, totpSecret, email: s.email, privileges, name: s.name, role: s.role };
   }
-  return { orgId, locationId, operatoryIds, appointmentTypes, staff };
+  const billing = await seedDemoBilling(owner, orgId, Object.values(staff)[0]!.staffId);
+  return { orgId, locationId, operatoryIds, appointmentTypes, billing, staff };
 }
 
 /**
@@ -140,6 +143,7 @@ export const MAPLE: TenantSpec = {
     { key: 'jane', name: 'Jane Smith, CDA', email: 'jane.smith@maple.example.test', role: 'dental_assistant', title: 'CDA' },
     { key: 'rosa', name: 'Rosa Diaz, RDH', email: 'rosa.diaz@maple.example.test', role: 'hygienist', title: 'RDH' },
     { key: 'frank', name: 'Frank Ito', email: 'frank.ito@maple.example.test', role: 'front_desk' },
+    { key: 'bea', name: 'Bea Carter', email: 'bea.carter@maple.example.test', role: 'billing', extraPrivileges: ['fee_schedule.manage'] },
     { key: 'cora', name: 'Cora Webb', email: 'cora.webb@maple.example.test', role: 'compliance_officer', extraPrivileges: ['patient.read'] },
   ],
 };

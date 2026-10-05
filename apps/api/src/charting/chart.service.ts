@@ -26,6 +26,7 @@ import { AccessService } from '../auth/access.service';
 import type { Actor } from '../auth/actor';
 import { conflict, invalid, notFound } from '../common/errors';
 import { ENTRY_KINDS, EntryKind, PROCEDURE_DETAIL_COLUMNS } from './entry-kinds';
+import { suggestBillingCode } from '../billing/codes';
 
 export interface EncounterRow {
   id: string;
@@ -507,7 +508,7 @@ export class ChartService {
         await this.access.requireCredential(tx, actor, 'procedure.verify', e.location_id, 'procedure.verify');
         verified = { by: actor.staffId, at: new Date().toISOString() };
       }
-      const billing = to === 'PERFORMED' ? await this.suggestBillingCode(tx, p.procedure_concept, p.surfaces, p.tooth_instance_id as string | null) : null;
+      const billing = to === 'PERFORMED' ? ((await suggestBillingCode(tx, p.procedure_concept, p.surfaces.length, p.tooth_instance_id as string | null)) ?? null) : null;
       await tx.query(
         `UPDATE procedure_occurrence
             SET status = $2,
@@ -520,25 +521,8 @@ export class ChartService {
         [id, to, verified.by, verified.at, billing?.code ?? null, billing?.version ?? null, actor.staffId],
       );
       await this.audit.record(tx, actor, { action: 'procedure.status', objectType: 'procedure_occurrence', objectId: id, patientId: p.patient_id, details: { from: p.status, to } });
-      return { id, status: to, billingCode: billing };
+      return { id, status: to, billingCode: billing && { code: billing.code, version: billing.version } };
     });
-  }
-
-  /** CDT suggestion from the licensed code table (empty unless loaded for this deployment). */
-  private async suggestBillingCode(tx: Tx, concept: string, surfaces: string[], toothInstanceId: string | null) {
-    const tooth = toothInstanceId
-      ? await tx.one<{ tooth_class: string }>('SELECT dp.tooth_class FROM tooth_instance ti JOIN dental_position dp ON dp.id = ti.dental_position_id WHERE ti.id = $1', [toothInstanceId])
-      : undefined;
-    return tx.one<{ code: string; version: string }>(
-      `SELECT r.code, r.version FROM billing_code_rule r
-         JOIN billing_code c ON c.code_system = 'CDT' AND c.version = r.version AND c.code = r.code
-        WHERE r.procedure_concept = $1
-          AND (r.surface_count IS NULL OR r.surface_count = LEAST($2::int, 4))
-          AND (r.tooth_class IS NULL OR r.tooth_class = $3)
-          AND c.valid_from <= current_date AND (c.valid_to IS NULL OR c.valid_to >= current_date)
-        ORDER BY r.version DESC, r.surface_count NULLS LAST LIMIT 1`,
-      [concept, surfaces.length, tooth?.tooth_class ?? null],
-    );
   }
 
   private async assertStaff(tx: Tx, ids: string[]) {
