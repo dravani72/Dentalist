@@ -14,5 +14,5 @@
     "dev:web": "npm run dev -w @teeth/web",
     "verify:integrity": "npm run verify:integrity -w @teeth/api"
   },
-  "engines": { "node": ">=22" }
+  "engines": { "node": ">=22.9" }
 }

@@ -178,6 +178,8 @@ tr.clickable:hover { background: var(--sunken); }
 .sched-col .slot { border-top: 1px dotted var(--line); }
 .appt { position: absolute; left: 3px; right: 3px; border-radius: 6px; padding: 4px 6px; font-size: 12px; overflow: hidden; background: var(--surface); border: 1.5px solid var(--accent); border-left-width: 5px; text-align: left; }
 .appt .nm { font-weight: 700; }
+.appt.compact { padding: 1px 6px; line-height: 1.2; }
+.appt.compact > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .appt.st-cancelled { border-style: dashed; opacity: .6; }
 .appt.st-checked_in, .appt.st-in_chair { border-color: var(--c-planned); }
 .appt.st-completed { border-color: var(--c-completed); }

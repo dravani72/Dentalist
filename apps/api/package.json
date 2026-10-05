@@ -5,15 +5,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "tsx watch --tsconfig tsconfig.json src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=../../.env --tsconfig tsconfig.json src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
-    "db:migrate": "tsx src/scripts/migrate.ts",
-    "db:seed": "tsx src/scripts/seed.ts",
-    "db:reset": "tsx src/scripts/migrate.ts --reset && tsx src/scripts/seed.ts",
-    "verify:integrity": "tsx src/scripts/verify-integrity.ts",
-    "worker": "tsx src/scripts/worker.ts",
-    "codes:load": "tsx src/scripts/load-codes.ts"
+    "db:migrate": "tsx --env-file-if-exists=../../.env src/scripts/migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=../../.env src/scripts/seed.ts",
+    "db:reset": "tsx --env-file-if-exists=../../.env src/scripts/migrate.ts --reset && tsx --env-file-if-exists=../../.env src/scripts/seed.ts",
+    "verify:integrity": "tsx --env-file-if-exists=../../.env src/scripts/verify-integrity.ts",
+    "worker": "tsx --env-file-if-exists=../../.env src/scripts/worker.ts",
+    "codes:load": "tsx --env-file-if-exists=../../.env src/scripts/load-codes.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.0",

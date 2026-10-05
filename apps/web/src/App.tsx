@@ -44,14 +44,26 @@ function Authed() {
   useIdleLogout(me.data?.idleTimeoutMinutes ?? 15);
   if (me.isLoading) return <div className="page">Loading…</div>;
   if (!me.data) return <Login />;
-  const [section = 'schedule', id] = route;
+  const privs = me.data.privileges;
+  // Top-level sections and the privilege each needs; a role lands on the first one it can open.
+  const sections = (
+    [
+      ['schedule', 'Schedule', privs.includes('schedule.read')],
+      ['patients', 'Patients', privs.includes('patient.read')],
+      ['portal-inbox', 'Portal inbox', privs.includes('portal.respond') || privs.includes('consent.manage')],
+      ['billing', 'Billing', privs.includes('billing.read')],
+      ['admin', 'Staff', privs.includes('admin.staff')],
+      ['audit', 'Audit log', privs.includes('audit.read')],
+    ] as const
+  ).filter(([, , allowed]) => allowed);
+  const [section = sections[0]?.[0] ?? 'schedule', id] = route;
   async function logout() {
     await api.post('/auth/logout').catch(() => undefined);
     rememberLoginEmail(null);
     setToken(null);
   }
   const link = (href: string, label: string, key: string) => (
-    <a href={`#/${href}`} aria-current={section === key ? 'page' : undefined}>
+    <a key={key} href={`#/${href}`} aria-current={section === key ? 'page' : undefined}>
       {label}
     </a>
   );
@@ -62,12 +74,7 @@ function Authed() {
           <span className="brand">Teeth</span>
           <span className="synthetic">Synthetic data</span>
           <nav aria-label="Main">
-            {link('schedule', 'Schedule', 'schedule')}
-            {link('patients', 'Patients', 'patients')}
-            {(me.data.privileges.includes('portal.respond') || me.data.privileges.includes('consent.manage')) && link('portal-inbox', 'Portal inbox', 'portal-inbox')}
-            {me.data.privileges.includes('billing.read') && link('billing', 'Billing', 'billing')}
-            {me.data.privileges.includes('admin.staff') && link('admin', 'Staff', 'admin')}
-            {me.data.privileges.includes('audit.read') && link('audit', 'Audit log', 'audit')}
+            {sections.map(([key, label]) => link(key, label, key))}
           </nav>
           <div className="who">
             <span>
