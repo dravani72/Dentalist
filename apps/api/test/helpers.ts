@@ -25,6 +25,15 @@ export interface World {
   sender: LogOnlyMessageSender;
   clearinghouse: FakeClearinghouse;
   login(t: Tenant, key: string): Promise<Session>;
+  /**
+   * A never-used authenticator code for an account. Codes work once, so the app under test gives
+   * each account its own clock, which jumps forward 90 s (three steps) whenever a test asks for a code.
+   */
+  nextTotp(userId: string, secret: string): string;
+  /** The account's current code, without advancing its clock (for replay tests). */
+  currentTotp(userId: string, secret: string): string;
+  /** The account's code at its clock plus `deltaMs`, without advancing it. */
+  totpAt(userId: string, secret: string, deltaMs: number): string;
   close(): Promise<void>;
 }
 
@@ -50,7 +59,15 @@ export async function setupWorld(): Promise<World> {
   partner.callbackDelayMs = 10;
   const sender = new LogOnlyMessageSender();
   const clearinghouse = new FakeClearinghouse();
+  const totpOffsets = new Map<string, number>();
+  const totpClock = (userId: string) => Date.now() + (totpOffsets.get(userId) ?? 0);
+  const currentTotp = (userId: string, secret: string) => totpCode(secret, totpClock(userId));
+  const nextTotp = (userId: string, secret: string) => {
+    totpOffsets.set(userId, (totpOffsets.get(userId) ?? 0) + 90_000);
+    return currentTotp(userId, secret);
+  };
   const app = await createApp({
+    totpClock,
     config: { databaseUrl: TEST_DB, databaseOwnerUrl: TEST_OWNER_DB, devTools: false, claimPollSeconds: 0 },
     erxPartner: partner,
     messageSender: sender,
@@ -61,7 +78,7 @@ export async function setupWorld(): Promise<World> {
 
   async function login(t: Tenant, key: string): Promise<Session> {
     const s = t.staff[key]!;
-    const res = await http.post('/api/auth/login').send({ email: s.email, password: SYNTHETIC_PASSWORD, totp: totpCode(s.totpSecret) });
+    const res = await http.post('/api/auth/login').send({ email: s.email, password: SYNTHETIC_PASSWORD, totp: nextTotp(s.userId, s.totpSecret) });
     if (res.status !== 200) throw new Error(`login failed for ${key}: ${res.status} ${JSON.stringify(res.body)}`);
     const token = res.body.token as string;
     const session: Session = {
@@ -69,7 +86,7 @@ export async function setupWorld(): Promise<World> {
       get: (path) => http.get(path).set('Authorization', `Bearer ${token}`),
       post: (path, body) => http.post(path).set('Authorization', `Bearer ${token}`).send(body ?? {}),
       async stepUp() {
-        const r = await session.post('/api/auth/step-up', { totp: totpCode(s.totpSecret) });
+        const r = await session.post('/api/auth/step-up', { totp: nextTotp(s.userId, s.totpSecret) });
         if (r.status !== 200) throw new Error('step-up failed');
       },
     };
@@ -86,6 +103,9 @@ export async function setupWorld(): Promise<World> {
     sender,
     clearinghouse,
     login,
+    nextTotp,
+    currentTotp,
+    totpAt: (userId: string, secret: string, deltaMs: number) => totpCode(secret, totpClock(userId) + deltaMs),
     async close() {
       await app.close();
       await owner.end();

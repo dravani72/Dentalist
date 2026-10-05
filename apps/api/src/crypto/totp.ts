@@ -19,13 +19,33 @@ export function totpCode(secretB32: string, at: number = Date.now(), stepSeconds
 
 /** Accepts the current code and one step either side, for clock drift. */
 export function verifyTotp(secretB32: string, code: string, at: number = Date.now()): boolean {
-  if (!/^\d{6}$/.test(code)) return false;
-  for (const drift of [-1, 0, 1]) {
-    const expected = totpCode(secretB32, at + drift * 30_000);
-    if (timingSafeEqual(Buffer.from(expected), Buffer.from(code))) return true;
-  }
-  return false;
+  return matchTotpStep(secretB32, code, at) !== null;
 }
+
+/**
+ * The 30-second step a code belongs to (current step or one either side), or null. Callers record
+ * the step and refuse any code for the same or an earlier step, so each code works only once.
+ */
+export function matchTotpStep(secretB32: string, code: string, at: number = Date.now()): number | null {
+  if (!/^\d{6}$/.test(code)) return null;
+  const now = totpStep(at);
+  for (const drift of [-1, 0, 1]) {
+    const expected = totpCode(secretB32, (now + drift) * 30_000);
+    if (timingSafeEqual(Buffer.from(expected), Buffer.from(code))) return now + drift;
+  }
+  return null;
+}
+
+export function totpStep(at: number = Date.now()): number {
+  return Math.floor(at / 30_000);
+}
+
+/**
+ * Time source for authenticator checks, per account. Production uses the wall clock for everyone;
+ * tests give each synthetic account its own clock so every sign-in can use a fresh code.
+ */
+export const TOTP_CLOCK = Symbol('TOTP_CLOCK');
+export type TotpClock = (userId: string) => number;
 
 export function base32Encode(buf: Buffer): string {
   let bits = 0;

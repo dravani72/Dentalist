@@ -6,7 +6,8 @@ import { DbService } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { FIELD_CIPHER, FieldCipher } from '../crypto/keys';
 import { verifyPassword } from '../crypto/password';
-import { verifyTotp } from '../crypto/totp';
+import { matchTotpStep, TOTP_CLOCK, TotpClock } from '../crypto/totp';
+import { Tx } from '../db/db.service';
 import { DomainError, forbidden, unauthenticated } from '../common/errors';
 import type { Actor } from './actor';
 
@@ -25,12 +26,26 @@ export class AuthService {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(FIELD_CIPHER) private readonly cipher: FieldCipher,
+    @Inject(TOTP_CLOCK) private readonly clock: TotpClock,
   ) {}
+
+  /**
+   * Checks an authenticator code and burns its time step: the same code, or any older one, is
+   * refused afterwards (replay protection). Returns why a code was refused, or null when accepted.
+   */
+  private async consumeTotp(userId: string, secretEnc: string, code: string): Promise<'totp' | 'totp_replay' | null> {
+    const step = matchTotpStep(this.cipher.decrypt(secretEnc, `totp:${userId}`), code, this.clock(userId));
+    if (step === null) return 'totp';
+    const fresh = await this.db.tx({ orgId: null }, (tx: Tx) =>
+      tx.one<{ ok: boolean }>('SELECT auth_totp_consume($1, $2) AS ok', [userId, step]),
+    );
+    return fresh?.ok ? null : 'totp_replay';
+  }
 
   async login(req: LoginRequest, correlationId: string) {
     const user = await this.db.tx({ orgId: null }, (tx) =>
-      tx.one<{ id: string; password_hash: string; totp_secret_enc: string; disabled_at: Date | null; display_name: string }>(
-        'SELECT id, password_hash, totp_secret_enc, disabled_at, display_name FROM user_account WHERE lower(email) = lower($1)',
+      tx.one<{ id: string; password_hash: string; totp_secret_enc: string; disabled_at: Date | null; display_name: string; setup_required: boolean }>(
+        'SELECT id, password_hash, totp_secret_enc, disabled_at, display_name, setup_required FROM user_account WHERE lower(email) = lower($1)',
         [req.email],
       ),
     );
@@ -42,9 +57,10 @@ export class AuthService {
       return unauthenticated('Email, password or authenticator code is incorrect');
     };
     if (!user || user.disabled_at) throw await fail('unknown_or_disabled');
+    if (user.setup_required) throw await fail('setup_required');
     if (!(await verifyPassword(req.password, user.password_hash))) throw await fail('password');
-    const secret = this.cipher.decrypt(user.totp_secret_enc, `totp:${user.id}`);
-    if (!verifyTotp(secret, req.totp)) throw await fail('totp');
+    const totpRefused = await this.consumeTotp(user.id, user.totp_secret_enc, req.totp);
+    if (totpRefused) throw await fail(totpRefused);
 
     const memberships = await this.db.tx({ orgId: null }, (tx) =>
       tx.query<{ staff_member_id: string; org_id: string; org_name: string; display_name: string }>(
@@ -137,12 +153,16 @@ export class AuthService {
   /** Step-up: re-verify the second factor inside an active session before signing or prescribing. */
   async stepUp(actor: Actor, totp: string) {
     const user = await this.db.tx({ orgId: null }, (tx) =>
-      tx.one<{ totp_secret_enc: string }>('SELECT totp_secret_enc FROM user_account WHERE id = $1', [actor.userId]),
+      tx.one<{ totp_secret_enc: string; setup_required: boolean }>('SELECT totp_secret_enc, setup_required FROM user_account WHERE id = $1', [actor.userId]),
     );
-    const ok = !!user && verifyTotp(this.cipher.decrypt(user.totp_secret_enc, `totp:${actor.userId}`), totp);
-    if (!ok) {
-      await this.audit.recordDetached({ orgId: actor.orgId, actor }, { action: 'auth.step_up', outcome: 'denied' });
-      throw forbidden('Authenticator code is incorrect');
+    const refused = !user || user.setup_required ? 'totp' : await this.consumeTotp(actor.userId, user.totp_secret_enc, totp);
+    if (refused) {
+      await this.audit.recordDetached({ orgId: actor.orgId, actor }, { action: 'auth.step_up', outcome: 'denied', details: { reason: refused } });
+      throw forbidden(
+        refused === 'totp_replay'
+          ? 'That code was already used. Wait for the next code from your authenticator app.'
+          : 'Authenticator code is incorrect',
+      );
     }
     const at = new Date();
     await this.db.tx({ orgId: actor.orgId, staffId: actor.staffId }, async (tx) => {

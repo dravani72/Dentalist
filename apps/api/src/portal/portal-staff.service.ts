@@ -313,7 +313,7 @@ export class PortalStaffService {
         if (n!.n !== new Set(req.plannedProcedureIds).size) throw invalid('Some treatment items do not belong to this patient');
       }
       if (req.providerId) {
-        const s = await tx.one("SELECT id FROM staff_member WHERE id = $1 AND role_template IN ('dentist', 'hygienist')", [req.providerId]);
+        const s = await tx.one("SELECT id FROM staff_member WHERE id = $1 AND provider_kind IS NOT NULL", [req.providerId]);
         if (!s) throw invalid('Provider not found');
       }
       const r = await tx.one<{ id: string }>(

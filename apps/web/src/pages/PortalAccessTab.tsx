@@ -281,7 +281,7 @@ function SendForm({ patientId }: { patientId: string }) {
   });
   const current = templates.data?.filter((t) => !t.retired_at) ?? [];
   const plan = (chart.data?.openTreatmentPlan ?? []).filter((pp) => OPEN_PLAN.includes(String(pp.status)));
-  const dentists = chart.data?.staff.filter((s) => s.role_template === 'dentist') ?? [];
+  const dentists = chart.data?.staff.filter((s) => s.provider_kind === 'dentist') ?? [];
   return (
     <form
       className="field"

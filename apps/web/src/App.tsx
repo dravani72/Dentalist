@@ -11,6 +11,8 @@ import { AuditLog } from './pages/AuditLog';
 import { PortalApp } from './pages/portal/PortalApp';
 import { PortalInbox } from './pages/PortalInbox';
 import { BillingPage } from './pages/billing/BillingPage';
+import { StaffAdmin } from './pages/admin/StaffAdmin';
+import { AccountSetup } from './pages/AccountSetup';
 
 export function App() {
   const [token, setTok] = useState(getToken());
@@ -30,6 +32,8 @@ export function App() {
   const route = useRoute();
   // The patient portal is a separate app with its own identity; it never sees the staff session.
   if (route[0] === 'portal') return <PortalApp />;
+  // First sign-in setup works without (and never alongside) a staff session.
+  if (route[0] === 'setup' && !token) return <AccountSetup />;
   if (!token) return <Login />;
   return <Authed />;
 }
@@ -62,6 +66,7 @@ function Authed() {
             {link('patients', 'Patients', 'patients')}
             {(me.data.privileges.includes('portal.respond') || me.data.privileges.includes('consent.manage')) && link('portal-inbox', 'Portal inbox', 'portal-inbox')}
             {me.data.privileges.includes('billing.read') && link('billing', 'Billing', 'billing')}
+            {me.data.privileges.includes('admin.staff') && link('admin', 'Staff', 'admin')}
             {me.data.privileges.includes('audit.read') && link('audit', 'Audit log', 'audit')}
           </nav>
           <div className="who">
@@ -79,6 +84,7 @@ function Authed() {
           {section === 'patients' && id && <PatientWorkspace key={id} patientId={id} initialTab={route[2]} />}
           {section === 'billing' && <BillingPage />}
           {section === 'audit' && <AuditLog />}
+          {section === 'admin' && <StaffAdmin staffId={id} />}
           {section === 'portal-inbox' && <PortalInbox />}
         </main>
       </div>

@@ -9,6 +9,7 @@ const SYNTHETIC_USERS = [
   ['frank.ito@maple.example.test', 'Front desk'],
   ['bea.carter@maple.example.test', 'Billing'],
   ['cora.webb@maple.example.test', 'Compliance officer'],
+  ['pat.morgan@maple.example.test', 'Practice manager'],
 ];
 
 export function Login() {
@@ -51,9 +52,12 @@ export function Login() {
       </div>
       {email.endsWith('.test') && <DevCodeHint key={email} email={email} />}
       {err && <div className="err">{err}</div>}
-      <button className="btn primary" disabled={busy}>
-        Sign in
-      </button>
+      <div className="row">
+        <button className="btn primary" disabled={busy}>
+          Sign in
+        </button>
+        <a href="#/setup">Set up my sign-in</a>
+      </div>
       <details className="small">
         <summary>Synthetic accounts (password synthetic-dev-only)</summary>
         <ul>

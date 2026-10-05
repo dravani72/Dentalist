@@ -81,7 +81,7 @@ function StepUpModal({ onDone, onCancel }: { onDone: () => void; onCancel: () =>
     <div className="scrim" role="dialog" aria-modal="true" aria-labelledby="stepup-title">
       <form className="modal" onSubmit={submit}>
         <h3 id="stepup-title">Confirm it’s you</h3>
-        <p className="muted">Signing, prescribing and emergency access need a fresh code from your authenticator app. It stays valid for five minutes.</p>
+        <p className="muted">Signing, prescribing, emergency access and staff security changes need a fresh code from your authenticator app. Each code works once; this confirmation lasts five minutes.</p>
         <div className="field">
           <label htmlFor="stepup-code">Authenticator code</label>
           <input id="stepup-code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
@@ -100,13 +100,16 @@ function StepUpModal({ onDone, onCancel }: { onDone: () => void; onCancel: () =>
 /** Development only: the API exposes the current code for synthetic .test accounts when DEV_TOOLS=1. */
 export function DevCodeHint({ email }: { email?: string }) {
   const [code, setCode] = useState<string | null>(null);
+  const [wait, setWait] = useState<number | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const addr = email ?? loginEmail();
   if (unavailable || !addr || !addr.endsWith('.test')) return null;
   async function fetchCode() {
     try {
-      const r = await api.get<{ code: string }>(`/dev/totp?email=${encodeURIComponent(addr!)}`);
+      // Codes work once; when both usable codes are spent the API says how long until the next one.
+      const r = await api.get<{ code: string | null; waitSeconds?: number }>(`/dev/totp?email=${encodeURIComponent(addr!)}`);
       setCode(r.code);
+      setWait(r.code ? null : r.waitSeconds ?? 30);
     } catch {
       setUnavailable(true);
     }
@@ -116,6 +119,13 @@ export function DevCodeHint({ email }: { email?: string }) {
       Synthetic test account:{' '}
       {code ? (
         <span className="mono">{code}</span>
+      ) : wait !== null ? (
+        <>
+          next code in about {wait} s{' '}
+          <button type="button" className="btn small" onClick={fetchCode}>
+            try again
+          </button>
+        </>
       ) : (
         <button type="button" className="btn small" onClick={fetchCode}>
           show the dev code

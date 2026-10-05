@@ -255,6 +255,7 @@ async function main() {
   for (const t of [maple, river]) for (const s of Object.values(t.staff)) console.log(`  ${s.email.padEnd(40)} ${s.role}`);
   console.log('Authenticator codes: the login screen shows the current code for synthetic users when DEV_TOOLS=1.');
   console.log('\nBilling: bea.carter@maple.example.test posts charges, claims and payments; codes and fees are the invented SYNTHETIC set.');
+  console.log('Practice setup: pat.morgan@maple.example.test manages staff, privileges, licenses and working hours (Staff tab).');
   console.log('Patient portal (/#/portal, same password): jordan.rivera@patients.example.test (self), kasia.kowalski@patients.example.test (parent of Lena Kowalski, 12).');
   console.log('Emailed sign-in codes: the portal sign-in screen shows them for synthetic accounts when DEV_TOOLS=1.');
 }

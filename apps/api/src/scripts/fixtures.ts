@@ -86,11 +86,21 @@ export async function createTenant(owner: Client, cipher: LocalFieldCipher, spec
       );
     }
     const privileges = [...new Set([...ROLE_TEMPLATES[s.role], ...(s.extraPrivileges ?? [])])].filter((p) => !(s.withoutPrivileges ?? []).includes(p));
+    // Who can be booked is an explicit setting; the fixtures simply make dentists and hygienists bookable.
+    const providerKind = s.role === 'dentist' || s.role === 'hygienist' ? s.role : null;
     const sm = await owner.query<{ id: string }>(
-      'INSERT INTO staff_member (org_id, user_id, display_name, role_template, privileges, location_ids) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-      [orgId, userId, s.name, s.role, privileges, [locationId]],
+      'INSERT INTO staff_member (org_id, user_id, display_name, role_template, privileges, location_ids, provider_kind) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+      [orgId, userId, s.name, s.role, privileges, [locationId], providerKind],
     );
     const staffId = sm.rows[0]!.id;
+    if (providerKind) {
+      // Monday to Friday, 08:00 to 17:00, from well in the past so fixed-date tests fall inside.
+      await owner.query(
+        `INSERT INTO provider_hours (org_id, staff_member_id, location_id, weekday, start_minute, end_minute, effective_from, created_by)
+         SELECT $1, $2, $3, d, 480, 1020, '2020-01-01', $2 FROM generate_series(1, 5) AS d`,
+        [orgId, staffId, locationId],
+      );
+    }
     if (s.license) {
       await owner.query(
         "INSERT INTO credential (org_id, staff_member_id, kind, title, identifier, state, status, expires_on, verified_at) VALUES ($1,$2,'dental_license',$3,$4,$5,$6,$7, now())",
@@ -145,6 +155,7 @@ export const MAPLE: TenantSpec = {
     { key: 'frank', name: 'Frank Ito', email: 'frank.ito@maple.example.test', role: 'front_desk' },
     { key: 'bea', name: 'Bea Carter', email: 'bea.carter@maple.example.test', role: 'billing', extraPrivileges: ['fee_schedule.manage'] },
     { key: 'cora', name: 'Cora Webb', email: 'cora.webb@maple.example.test', role: 'compliance_officer', extraPrivileges: ['patient.read'] },
+    { key: 'pat', name: 'Pat Morgan', email: 'pat.morgan@maple.example.test', role: 'practice_manager' },
   ],
 };
 

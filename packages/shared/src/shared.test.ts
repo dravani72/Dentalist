@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PRIVILEGES,
+  PRIVILEGE_GROUPS,
+  ProviderHoursRequest,
+  formatClock,
+  overlappingDays,
+  parseClock,
   benefitYearStart,
   estimate,
   formatCents,
@@ -126,5 +132,24 @@ describe('insurance estimates', () => {
     expect(benefitYearStart('2026-03-15', 7)).toBe('2025-07-01');
     expect(benefitYearStart('2026-08-01', 7)).toBe('2026-07-01');
     expect(formatCents(-1520)).toBe('−$15.20');
+  });
+});
+
+describe('practice setup', () => {
+  it('the privilege editor lists every privilege exactly once', () => {
+    const listed = PRIVILEGE_GROUPS.flatMap((g) => g.privileges.map((p) => p.key));
+    expect([...listed].sort()).toEqual([...PRIVILEGES].sort());
+    expect(new Set(listed).size).toBe(listed.length);
+  });
+
+  it('parses and formats clock times, and finds overlapping hours', () => {
+    expect(parseClock('08:30')).toBe(510);
+    expect(parseClock('24:00')).toBe(1440);
+    expect(parseClock('25:00')).toBeNaN();
+    expect(formatClock(1020)).toBe('17:00');
+    expect(overlappingDays([{ weekday: 1, startMinute: 480, endMinute: 720 }, { weekday: 1, startMinute: 780, endMinute: 1020 }])).toEqual([]);
+    expect(overlappingDays([{ weekday: 2, startMinute: 480, endMinute: 720 }, { weekday: 2, startMinute: 700, endMinute: 1020 }])).toEqual(['Tuesday']);
+    const bad = ProviderHoursRequest.safeParse({ locationId: '00000000-0000-4000-8000-000000000000', effectiveFrom: '2030-01-01', blocks: [{ weekday: 1, startMinute: 600, endMinute: 540 }] });
+    expect(bad.success).toBe(false);
   });
 });
