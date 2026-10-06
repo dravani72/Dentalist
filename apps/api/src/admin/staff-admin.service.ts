@@ -322,9 +322,9 @@ export class StaffAdminService {
       // NPIs are public registry numbers and grant nothing; licenses wait for verification.
       const status = req.kind === 'npi' ? 'active' : 'pending_verification';
       const c = await tx.one<{ id: string }>(
-        `INSERT INTO credential (org_id, staff_member_id, kind, title, identifier, state, status, expires_on, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-        [actor.orgId, staffId, req.kind, req.title ?? null, req.identifier, req.kind === 'npi' ? null : req.state, status, req.expiresOn ?? null, actor.staffId],
+        `INSERT INTO credential (org_id, staff_member_id, kind, title, identifier, state, status, expires_on, created_by, authority_type)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+        [actor.orgId, staffId, req.kind, req.title ?? null, req.identifier, req.kind === 'npi' ? null : req.state, status, req.expiresOn ?? null, actor.staffId, req.authorityType ?? 'full_license'],
       );
       await this.audit.record(tx, actor, { action: 'credential.create', objectType: 'credential', objectId: c!.id, purpose: 'operations', details: { staffMemberId: staffId, kind: req.kind, state: req.state ?? null, status } });
       return { id: c!.id, status };
@@ -348,16 +348,19 @@ export class StaffAdminService {
       if (c.status !== 'pending_verification') throw conflict('Only a license waiting for verification can be verified. Add a new entry for a renewed license.');
       if (c.expires_on && c.expires_on < todayIso()) throw invalid('This license has already expired.');
       await tx.query(
-        `UPDATE credential SET status = 'active', verified_by = $2, verified_at = now(), verification_source = $3,
+        `UPDATE credential SET status = 'active', verified_by = $2, verified_at = now(), verification_source = $3, verification_expires_on = $4,
                 status_changed_at = now(), status_changed_by = $2 WHERE id = $1`,
-        [credentialId, actor.staffId, req.source],
+        [credentialId, actor.staffId, req.source, req.verificationExpiresOn ?? null],
       );
       await this.audit.record(tx, actor, { action: 'credential.verify', objectType: 'credential', objectId: credentialId, purpose: 'operations', details: { staffMemberId: c.staff_member_id, source: req.source } });
       return { id: credentialId, status: 'active' };
     });
   }
 
-  /** Suspend, revoke or mark expired. Takes effect on the holder's next signing attempt. */
+  /**
+   * Suspend, revoke or mark expired. Takes effect on the holder's next signing attempt; live
+   * telehealth visits they are running pause at once and the media server removes them (outbox).
+   */
   async setCredentialStatus(actor: Actor, credentialId: string, req: z.infer<typeof CredentialStatusRequest>) {
     await this.admin(actor, 'credential.status', credentialId);
     return this.db.tx(this.scope(actor), async (tx) => {
@@ -367,6 +370,14 @@ export class StaffAdminService {
       await tx.query(
         'UPDATE credential SET status = $2, status_reason = $3, status_changed_at = now(), status_changed_by = $4 WHERE id = $1',
         [credentialId, req.status, req.reason, actor.staffId],
+      );
+      await tx.query(
+        "UPDATE telehealth_case SET clinical_hold = 'provider_credential_changed', version = version + 1, updated_at = now() WHERE assigned_provider_id = $1 AND status = 'assessment_active'",
+        [c.staff_member_id],
+      );
+      await tx.query(
+        "INSERT INTO outbox (org_id, topic, payload, idempotency_key) VALUES ($1, 'telehealth.revoke_live_access', $2, $3)",
+        [actor.orgId, JSON.stringify({ staffId: c.staff_member_id }), `telehealth.revoke:${credentialId}:${req.status}:${Date.now()}`],
       );
       await this.audit.record(tx, actor, { action: 'credential.status', objectType: 'credential', objectId: credentialId, purpose: 'operations', details: { staffMemberId: c.staff_member_id, from: c.status, to: req.status, reason: req.reason } });
       return { id: credentialId, status: req.status };

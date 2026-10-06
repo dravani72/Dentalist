@@ -194,3 +194,37 @@ export async function telehealthErxFailureTask(tx: Tx, orgId: string, prescripti
     [orgId, c.patient_id, c.id, c.assigned_provider_id, prescriptionId, `erx:${prescriptionId}`, actorId ?? c.assigned_provider_id],
   );
 }
+
+/**
+ * A telehealth or recording consent was withdrawn (by the patient in the portal, or recorded by
+ * staff). Recording stops in every live visit for the patient; withdrawing telehealth consent
+ * also pauses clinical actions until the patient consents again. Stopping the media server's
+ * capture runs through the outbox so it is retried until it succeeds.
+ */
+export async function afterConsentWithdrawn(tx: Tx, orgId: string, signatureId: string) {
+  const s = await tx.one<{ patient_id: string; template_key: string }>(
+    'SELECT s.patient_id, t.template_key FROM consent_signature s JOIN consent_template t ON t.id = s.template_id WHERE s.id = $1',
+    [signatureId],
+  );
+  if (!s || ![TELEHEALTH_CONSENT_KEY, RECORDING_CONSENT_KEY].includes(s.template_key)) return;
+  const live = await tx.query<{ id: string; case_id: string; recording_status: string }>(
+    "SELECT id, case_id, recording_status FROM telehealth_session WHERE patient_id = $1 AND status NOT IN ('ended','failed','revoked')",
+    [s.patient_id],
+  );
+  for (const l of live) {
+    if (l.recording_status === 'active') {
+      await tx.query("UPDATE telehealth_session SET recording_status = 'stopped', version = version + 1 WHERE id = $1", [l.id]);
+      await tx.query("INSERT INTO telehealth_session_event (org_id, patient_id, session_id, kind, detail) VALUES ($1,$2,$3,'recording_stopped','consent_withdrawn')", [orgId, s.patient_id, l.id]);
+      await tx.query(
+        "INSERT INTO outbox (org_id, topic, payload, idempotency_key) VALUES ($1, 'telehealth.stop_egress', $2, $3) ON CONFLICT DO NOTHING",
+        [orgId, JSON.stringify({ sessionId: l.id }), `egress-stop:${l.id}:${signatureId}`],
+      );
+    }
+    if (s.template_key === TELEHEALTH_CONSENT_KEY) {
+      await tx.query(
+        "UPDATE telehealth_case SET clinical_hold = 'telehealth_consent_withdrawn', version = version + 1, updated_at = now() WHERE id = $1 AND status = 'assessment_active'",
+        [l.case_id],
+      );
+    }
+  }
+}

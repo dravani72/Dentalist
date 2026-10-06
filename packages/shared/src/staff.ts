@@ -181,11 +181,15 @@ export const CredentialCreateRequest = z.object({
   identifier: z.string().trim().min(1).max(40),
   state: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'Two-letter state').optional(),
   expiresOn: isoDate.optional(),
+  /** What kind of authority this is. Only kinds a reviewed jurisdiction rule accepts count for telehealth. */
+  authorityType: z.enum(['full_license', 'telehealth_registration', 'temporary_permit', 'compact_privilege']).default('full_license'),
 });
 
 export const CredentialVerifyRequest = z.object({
   /** Where the license was checked, e.g. "State dental board website, license lookup". */
   source: z.string().trim().min(5).max(300),
+  /** When this primary-source check should be repeated. Telehealth treats a lapsed check as unverified. */
+  verificationExpiresOn: isoDate.optional(),
 });
 
 export const CredentialStatusRequest = z.object({

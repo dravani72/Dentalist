@@ -39,12 +39,19 @@ import { PortalGuard } from './portal/portal-actor';
 import { PortalService } from './portal/portal.service';
 import { PortalStaffService } from './portal/portal-staff.service';
 import { PortalAuthController, PortalController, PortalDevController, PortalStaffController } from './portal/portal.controller';
+import { FakeRtcAdapter, RTC_ADAPTER } from './telehealth/rtc-adapter';
+import { EligibilityService } from './telehealth/eligibility.service';
+import { TelehealthService } from './telehealth/telehealth.service';
+import { TelehealthPortalService } from './telehealth/telehealth-portal.service';
+import { PortalTelehealthController, RtcSimController, RtcWebhookController, TelehealthController } from './telehealth/telehealth.controller';
 
 export interface AppOverrides {
   config?: Partial<AppConfig>;
   erxPartner?: unknown;
   messageSender?: unknown;
   clearinghouse?: unknown;
+  /** Media server for telehealth video (tests pass their own sandbox to drive it). */
+  rtcAdapter?: unknown;
   /** Clock for authenticator checks (tests only). */
   totpClock?: (userId: string) => number;
 }
@@ -59,6 +66,7 @@ export class AppModule {
   static register(overrides: AppOverrides = {}): DynamicModule {
     const config = { ...loadConfig(), ...overrides.config };
     const cipher = new LocalFieldCipher(config.localKeyDir);
+    const rtc = overrides.rtcAdapter ?? new FakeRtcAdapter();
     const providers: Provider[] = [
       { provide: APP_CONFIG, useValue: config },
       { provide: FIELD_CIPHER, useValue: cipher },
@@ -66,6 +74,7 @@ export class AppModule {
       { provide: MEDIA_STORAGE, useValue: new LocalEncryptedStorage(config.localMediaDir, cipher) },
       { provide: ERX_PARTNER, useValue: overrides.erxPartner ?? new FakeErxPartner() },
       { provide: CLEARINGHOUSE, useValue: overrides.clearinghouse ?? new FakeClearinghouse() },
+      { provide: RTC_ADAPTER, useValue: rtc },
       { provide: MESSAGE_SENDER, useValue: overrides.messageSender ?? new LogOnlyMessageSender() },
       { provide: TOTP_CLOCK, useValue: overrides.totpClock ?? ((_userId: string) => Date.now()) },
       { provide: APP_GUARD, useClass: SessionGuard },
@@ -90,8 +99,13 @@ export class AppModule {
       PortalStaffService,
       StaffAdminService,
       AccountSetupService,
+      EligibilityService,
+      TelehealthService,
+      TelehealthPortalService,
     ];
     const devTools = config.devTools && process.env.NODE_ENV !== 'production';
+    // The browser stand-in exists only with the sandbox media server, and never in production.
+    const rtcSim = rtc instanceof FakeRtcAdapter && process.env.NODE_ENV !== 'production';
     return {
       module: AppModule,
       controllers: [
@@ -108,6 +122,10 @@ export class AppModule {
         PortalStaffController,
         StaffAdminController,
         AccountSetupController,
+        TelehealthController,
+        RtcWebhookController,
+        PortalTelehealthController,
+        ...(rtcSim ? [RtcSimController] : []),
         ...(devTools ? [DevController, PortalDevController] : []),
       ],
       providers,

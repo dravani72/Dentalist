@@ -74,6 +74,8 @@ export const CreateAppointmentRequest = z.object({
   plannedProcedureIds: z.array(uuid).default([]),
   providerActiveMinutes: z.number().int().min(0).optional(),
   note: note,
+  /** In-person follow-up of a telehealth visit: keeps the lineage and completes its booking task. */
+  telehealthCaseId: uuid.optional(),
 });
 export type CreateAppointmentRequest = z.infer<typeof CreateAppointmentRequest>;
 
@@ -246,6 +248,8 @@ export const PrescriptionSignRequest = z.object({
   pharmacyPreferenceId: uuid,
   acknowledgedAlertIds: z.array(z.string()).default([]),
   idempotencyKey: z.string().uuid(),
+  /** Telehealth visits: the dentist confirmed the pharmacy with the patient during the visit. */
+  pharmacyConfirmedWithPatient: z.boolean().optional(),
 });
 
 export const BreakGlassRequest = z.object({ patientId: uuid, reason: z.string().trim().min(10).max(1000) });
