@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, errorText } from '../lib/api';
-import { ageFrom, fmtDate, fmtStamp, humanize, patientName } from '../lib/format';
+import { ageFrom, fmtDate, fmtStamp, fmtTime, humanize, patientName } from '../lib/format';
+import { go, scheduleContextFrom, scheduleHref, useRouteQuery, type ScheduleContext } from '../lib/router';
 import { useSession } from '../lib/session';
 import type { PatientDetail } from '../lib/types';
-import { ChartTab } from './ChartTab';
+import { ChartTab, type FromAppointment } from './ChartTab';
 import { HistoryTab } from './HistoryTab';
 import { PrescriptionsTab } from './PrescriptionsTab';
 import { PortalAccessTab } from './PortalAccessTab';
@@ -17,15 +18,29 @@ export function PatientWorkspace({ patientId, initialTab }: { patientId: string;
   const { can } = useSession();
   const [tab, setTab] = useState<Tab>(initialTab && TABS.includes(initialTab) ? (initialTab as Tab) : 'chart');
   const detail = useQuery({ queryKey: ['patient', patientId], queryFn: () => api.get<PatientDetail>(`/patients/${patientId}`), retry: false });
+  const fromSchedule = scheduleContextFrom(useRouteQuery());
+  const day = useScheduleDay(fromSchedule, can('schedule.read'));
+  const appt = day.data?.appointments.find((a) => a.id === fromSchedule?.appointmentId && a.patient_id === patientId) ?? null;
+  const back = fromSchedule && <BackToSchedule ctx={fromSchedule} appt={appt} tz={day.data?.timeZone} />;
 
   if (detail.error) {
     const e = detail.error;
     if (e instanceof ApiError && (e.details as { reason?: string } | undefined)?.reason === 'patient_outside_location_scope') {
-      return <BreakGlass patientId={patientId} message={e.message} />;
+      return (
+        <>
+          {back}
+          <BreakGlass patientId={patientId} message={e.message} />
+        </>
+      );
     }
-    return <div className="err">{errorText(e)}</div>;
+    return (
+      <>
+        {back}
+        <div className="err">{errorText(e)}</div>
+      </>
+    );
   }
-  if (!detail.data) return <p>Loading…</p>;
+  if (!detail.data) return <>{back}<p>Loading…</p></>;
   const d = detail.data;
   const tabs: [Tab, string][] = [
     ['chart', 'Chart'],
@@ -35,8 +50,12 @@ export function PatientWorkspace({ patientId, initialTab }: { patientId: string;
   if (can('billing.read')) tabs.push(['billing', 'Billing']);
   tabs.push(['portal', 'Portal & forms']);
   if (can('audit.read')) tabs.push(['access', 'Who viewed this chart']);
+  const fromAppointment: FromAppointment | null = fromSchedule
+    ? { appointmentId: fromSchedule.appointmentId, locationId: fromSchedule.locationId, status: appt?.status ?? null }
+    : null;
   return (
     <>
+      {back}
       <PatientBanner d={d} />
       <div className="tabs" role="tablist">
         {tabs.map(([k, label]) => (
@@ -45,13 +64,56 @@ export function PatientWorkspace({ patientId, initialTab }: { patientId: string;
           </button>
         ))}
       </div>
-      {tab === 'chart' && <ChartTab patientId={patientId} patient={d} />}
+      {tab === 'chart' && (day.isFetched || !fromSchedule || !can('schedule.read')) && (
+        <ChartTab key={fromSchedule?.appointmentId ?? 'chart'} patientId={patientId} patient={d} fromAppointment={fromAppointment} />
+      )}
       {tab === 'history' && <HistoryTab patientId={patientId} d={d} />}
       {tab === 'rx' && <PrescriptionsTab patientId={patientId} d={d} />}
       {tab === 'billing' && can('billing.read') && <BillingTab patientId={patientId} />}
       {tab === 'portal' && <PortalAccessTab patientId={patientId} d={d} />}
       {tab === 'access' && <AccessReport patientId={patientId} />}
     </>
+  );
+}
+
+interface ScheduleAppt {
+  id: string;
+  patient_id: string;
+  start_at: string;
+  end_at: string;
+  status: string;
+  appointment_type: string;
+}
+
+/** Same query (and cache) as the Schedule page, so going back and forth costs nothing extra. */
+function useScheduleDay(ctx: ScheduleContext | null, allowed: boolean) {
+  return useQuery({
+    queryKey: ['schedule', ctx?.locationId, ctx?.date],
+    queryFn: () => api.get<{ appointments: ScheduleAppt[]; timeZone: string }>(`/locations/${ctx!.locationId}/schedule?date=${ctx!.date}`),
+    enabled: !!ctx && allowed,
+    retry: false,
+  });
+}
+
+/** Sticky bar shown when a record was opened from the schedule: the visit it was opened for, and the way back. */
+function BackToSchedule({ ctx, appt, tz }: { ctx: ScheduleContext; appt: ScheduleAppt | null; tz?: string }) {
+  const href = scheduleHref(ctx);
+  const day = new Date(`${ctx.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return (
+    <nav className="back-bar" aria-label="Return to schedule">
+      <a className="btn primary back-btn" href={`#${href}`} onClick={(e) => { e.preventDefault(); go(href); }}>
+        <span aria-hidden="true">← </span>Back to schedule
+      </a>
+      <span className="small">
+        <b>{day}</b>
+        {appt && tz && (
+          <>
+            {' '}
+            · Visit: {appt.appointment_type}, {fmtTime(appt.start_at, tz)} to {fmtTime(appt.end_at, tz)} · {humanize(appt.status)}
+          </>
+        )}
+      </span>
+    </nav>
   );
 }
 

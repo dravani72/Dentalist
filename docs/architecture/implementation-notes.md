@@ -34,6 +34,11 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
   escape hatches. Swapping in Drizzle later only touches the data-access layer.
 - **Custom schedule grid instead of FullCalendar Premium.** Avoids a commercial license for the prototype. The grid
   is operatory-column based; drag-to-reschedule is not built (the API supports reschedule).
+- **Schedule to patient record.** Clicking a patient's name on an appointment opens their record on that
+  appointment's visit layer (or the complete chart, with "Start visit for this appointment", when nothing is charted
+  yet; starting it links the visit to the appointment and seats the patient). A sticky "Back to schedule" bar returns
+  to the same location and day with the appointment selected. The hash carries only opaque ids and the schedule date
+  (`#/patients/<id>/chart?from=schedule&loc=…&date=…&appt=…`, `#/schedule/<location>/<date>/<appointment>`).
 - **Local adapters stand in for AWS.** `LocalRecordSigner` (Ed25519 keys on disk) for KMS signing,
   `LocalFieldCipher` (AES-256-GCM) for KMS envelope encryption, encrypted local files for S3, the in-process outbox
   worker for SQS, password + TOTP for Cognito. Each sits behind an interface so the production adapter is a drop-in.

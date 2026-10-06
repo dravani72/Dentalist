@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, errorText } from '../lib/api';
 import { fmtTime, humanize, patientName, todayIn, zonedMinutes, zonedToIso } from '../lib/format';
-import { go } from '../lib/router';
+import { go, parseScheduleRoute, replace, scheduleHref, visitHref } from '../lib/router';
 import { useSession } from '../lib/session';
 import type { PatientRow } from '../lib/types';
 
@@ -21,6 +21,7 @@ interface Appt {
   status: string;
   confirmation_state: string;
   patient_id: string;
+  encounter_id: string | null;
   legal_given_name: string;
   legal_family_name: string;
   preferred_name: string | null;
@@ -37,13 +38,21 @@ const SLOT = 15;
 const PX_PER_MIN = 1.1;
 const STATUS_ICON: Record<string, string> = { scheduled: '○', confirmed: '◑', checked_in: '◐', in_chair: '●', completed: '✓', cancelled: '✕', no_show: '⊘' };
 
-export function Schedule() {
+export function Schedule({ route }: { route: string[] }) {
   const { me, can } = useSession();
-  const [locationId, setLocationId] = useState(me.locations[0]?.id ?? '');
+  // The day and location live in the URL so "Back to schedule" from a patient record lands on the same view.
+  const initial = parseScheduleRoute(route);
+  const [locationId, setLocationId] = useState(
+    initial.locationId && me.locations.some((l) => l.id === initial.locationId) ? initial.locationId : (me.locations[0]?.id ?? ''),
+  );
   const tz = me.locations.find((l) => l.id === locationId)?.time_zone ?? 'UTC';
-  const [date, setDate] = useState(todayIn(tz));
+  const [date, setDate] = useState(initial.date ?? todayIn(tz));
   const [booking, setBooking] = useState<{ operatoryId: string; time: string } | null>(null);
-  const [selected, setSelected] = useState<Appt | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initial.appointmentId ?? null);
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (locationId) replace(scheduleHref({ locationId, date, appointmentId: selectedId ?? undefined }));
+  }, [locationId, date, selectedId]);
   const ref = useQuery({ queryKey: ['sched-ref', locationId], queryFn: () => api.get<Ref>(`/locations/${locationId}/schedule-reference`), enabled: !!locationId });
   const day = useQuery({
     queryKey: ['schedule', locationId, date],
@@ -51,6 +60,13 @@ export function Schedule() {
     enabled: !!locationId,
     refetchInterval: 30_000,
   });
+  const selected = day.data?.appointments.find((a) => a.id === selectedId) ?? null;
+  // Coming back from a record: bring the appointment the user left from into view once.
+  useEffect(() => {
+    if (scrolled.current || !selectedId || !day.data) return;
+    scrolled.current = true;
+    document.getElementById(`appt-${selectedId}`)?.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }, [day.data, selectedId]);
   if (!locationId) return <p>You have no locations assigned.</p>;
   const ops = ref.data?.operatories ?? [];
   const providers = ref.data?.providers ?? [];
@@ -62,6 +78,7 @@ export function Schedule() {
     const d = new Date(`${date}T12:00:00Z`);
     d.setUTCDate(d.getUTCDate() + days);
     setDate(d.toISOString().slice(0, 10));
+    setSelectedId(null);
   };
 
   return (
@@ -70,7 +87,7 @@ export function Schedule() {
         <h1>Schedule</h1>
         <div className="row">
           {me.locations.length > 1 && (
-            <select aria-label="Location" value={locationId} onChange={(e) => setLocationId(e.target.value)} style={{ width: 'auto' }}>
+            <select aria-label="Location" value={locationId} onChange={(e) => { setLocationId(e.target.value); setSelectedId(null); }} style={{ width: 'auto' }}>
               {me.locations.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
@@ -81,17 +98,18 @@ export function Schedule() {
           <button className="btn small" onClick={() => shift(-1)} aria-label="Previous day">
             ←
           </button>
-          <input type="date" aria-label="Date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 'auto' }} />
+          <input type="date" aria-label="Date" value={date} onChange={(e) => { if (e.target.value) { setDate(e.target.value); setSelectedId(null); } }} style={{ width: 'auto' }} />
           <button className="btn small" onClick={() => shift(1)} aria-label="Next day">
             →
           </button>
-          <button className="btn small" onClick={() => setDate(todayIn(tz))}>
+          <button className="btn small" onClick={() => { setDate(todayIn(tz)); setSelectedId(null); }}>
             Today
           </button>
         </div>
       </div>
       <p className="hint">
         Times are clinic time ({tz}). Status is shown as a symbol and a word: {Object.entries(STATUS_ICON).map(([k, v]) => `${v} ${humanize(k)}`).join(', ')}.
+        {can('patient.read') && ' Click a patient’s name to open their record for that visit; click elsewhere on an appointment for check-in and other actions.'}
         {can('schedule.write') && ' Click an empty slot to book.'}
       </p>
       {(day.error || ref.error) && <div className="err">{errorText(day.error ?? ref.error)}</div>}
@@ -104,7 +122,7 @@ export function Schedule() {
           onClose={() => setBooking(null)}
         />
       )}
-      {selected && <ApptActions appt={selected} tz={tz} providers={providers} onClose={() => setSelected(null)} />}
+      {selected && <ApptActions appt={selected} tz={tz} date={date} locationId={locationId} providers={providers} onClose={() => setSelectedId(null)} />}
       <section className="panel" style={{ padding: 0 }}>
         <div className="scroll">
           <div className="sched">
@@ -146,17 +164,32 @@ export function Schedule() {
                       const who = a.provider_ids.map((id) => providers.find((p) => p.id === id)?.display_name ?? '').join(', ');
                       // Short visits get fewer, denser lines so the status word is never cut off.
                       const lines = h >= 52 ? 3 : h >= 30 ? 2 : 1;
+                      // The patient's name opens their record on this visit; the rest of the card opens the actions panel.
+                      const name = can('patient.read') ? (
+                        <a className="nm pt-link" href={`#${visitHref(a.patient_id, { locationId, date, appointmentId: a.id })}`} title={`Open ${patientName(a)}’s record for this visit`}>
+                          {patientName(a)}
+                        </a>
+                      ) : (
+                        <span className="nm">{patientName(a)}</span>
+                      );
                       return (
-                        <button
+                        <div
                           key={a.id}
-                          className={`appt st-${a.status}${lines < 3 ? ' compact' : ''}`}
+                          id={`appt-${a.id}`}
+                          className={`appt st-${a.status}${lines < 3 ? ' compact' : ''}${selectedId === a.id ? ' sel' : ''}`}
                           style={{ top, height: h }}
                           title={`${patientName(a)} · ${when} · ${humanize(a.status)}${who ? ` · ${who}` : ''}`}
-                          onClick={() => setSelected(a)}
                         >
+                          <button
+                            type="button"
+                            className="appt-hit"
+                            aria-label={`Appointment actions: ${patientName(a)}, ${when}, ${humanize(a.status)}`}
+                            aria-pressed={selectedId === a.id}
+                            onClick={() => setSelectedId(a.id)}
+                          />
                           {lines === 3 ? (
                             <>
-                              <div className="nm">{patientName(a)}</div>
+                              <div>{name}</div>
                               <div>{when}</div>
                               <div>
                                 {status}
@@ -166,7 +199,7 @@ export function Schedule() {
                           ) : (
                             <>
                               <div>
-                                <span className="nm">{patientName(a)}</span> · {status}
+                                {name} · {status}
                               </div>
                               {lines === 2 && (
                                 <div>
@@ -176,7 +209,7 @@ export function Schedule() {
                               )}
                             </>
                           )}
-                        </button>
+                        </div>
                       );
                     })}
                 </div>
@@ -330,7 +363,7 @@ function HoursWarning({ refData, providerId, date, time, minutes, tz }: { refDat
   );
 }
 
-function ApptActions({ appt, tz, providers, onClose }: { appt: Appt; tz: string; providers: Ref['providers']; onClose(): void }) {
+function ApptActions({ appt, tz, date, locationId, providers, onClose }: { appt: Appt; tz: string; date: string; locationId: string; providers: Ref['providers']; onClose(): void }) {
   const { can } = useSession();
   const qc = useQueryClient();
   const [msg, setMsg] = useState('');
@@ -366,9 +399,11 @@ function ApptActions({ appt, tz, providers, onClose }: { appt: Appt; tz: string;
         </button>
       </div>
       <div className="row">
-        <button className="btn primary" onClick={() => go(`/patients/${appt.patient_id}`)}>
-          Open chart
-        </button>
+        {can('patient.read') && (
+          <button className="btn primary" onClick={() => go(visitHref(appt.patient_id, { locationId, date, appointmentId: appt.id }))}>
+            Open record for this visit
+          </button>
+        )}
         {can('schedule.write') && !closed && (
           <>
             {appt.status === 'scheduled' && <button className="btn" onClick={() => setStatus('confirmed')}>Confirmed</button>}

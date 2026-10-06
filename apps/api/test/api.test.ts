@@ -137,6 +137,42 @@ describe('scheduling', () => {
     expect(text).toContain('Maple Street Dental');
     expect(text).not.toMatch(/crown/i);
   });
+
+  it('starts a visit from its appointment once, for that patient only', async () => {
+    const p = await frank.post('/api/patients', { legalGivenName: 'Visit', legalFamilyName: 'FromSchedule', dateOfBirth: '1975-05-05', homeLocationId: w.maple.locationId });
+    const other = await frank.post('/api/patients', { legalGivenName: 'Not', legalFamilyName: 'ThisOne', dateOfBirth: '1976-06-06', homeLocationId: w.maple.locationId });
+    const appt = await frank.post('/api/appointments', {
+      patientId: p.body.id,
+      locationId: w.maple.locationId,
+      appointmentTypeId: w.maple.appointmentTypes.exam,
+      providerIds: [w.maple.staff.amy!.staffId],
+      operatoryId: w.maple.operatoryIds[2],
+      start: slot('2030-03-06', '09:00'),
+      end: slot('2030-03-06', '10:00'),
+    });
+    expect(appt.status).toBe(201);
+    const req = { patientId: p.body.id, locationId: w.maple.locationId, appointmentId: appt.body.id, chiefComplaint: 'Clinical visit' };
+
+    // Front desk opens the record from the schedule but cannot start clinical work.
+    expect((await frank.post('/api/encounters', req)).status).toBe(403);
+    // Another practice cannot reach the appointment or the patient.
+    const cross = await omar.post('/api/encounters', { ...req, locationId: w.river.locationId });
+    expect(cross.status).toBe(404);
+    // The appointment must belong to the patient whose chart is open.
+    expect((await jane.post('/api/encounters', { ...req, patientId: other.body.id })).status).toBe(422);
+
+    const first = await jane.post('/api/encounters', req);
+    expect(first.status).toBe(201);
+    expect(first.body.existing).toBe(false);
+    const linked = await w.owner.query('SELECT a.status, a.encounter_id, e.appointment_id FROM appointment a JOIN encounter e ON e.id = a.encounter_id WHERE a.id = $1', [appt.body.id]);
+    expect(linked.rows[0]).toMatchObject({ status: 'in_chair', encounter_id: first.body.id, appointment_id: appt.body.id });
+
+    // A second start (another workstation, a double click) reuses the same visit.
+    const again = await amy.post('/api/encounters', req);
+    expect(again.body).toMatchObject({ id: first.body.id, existing: true });
+    const chart = await amy.get(`/api/patients/${p.body.id}/chart`);
+    expect(chart.body.visits.filter((v: { encounter: { appointment_id: string } }) => v.encounter.appointment_id === appt.body.id)).toHaveLength(1);
+  });
 });
 
 describe('charting, verification and signing', () => {

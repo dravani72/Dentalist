@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ANATOMIC_STATES,
@@ -34,7 +34,17 @@ const ROUTE: Record<EntryKind, string> = {
   media: 'media',
 };
 
-export function ChartTab({ patientId, patient }: { patientId: string; patient: PatientDetail }) {
+/** The schedule appointment a record was opened from; its visit layer is shown first. */
+export interface FromAppointment {
+  appointmentId: string;
+  locationId: string;
+  /** Appointment status from the schedule, when known. */
+  status: string | null;
+}
+
+const STARTABLE = ['scheduled', 'confirmed', 'checked_in', 'in_chair'];
+
+export function ChartTab({ patientId, patient, fromAppointment }: { patientId: string; patient: PatientDetail; fromAppointment?: FromAppointment | null }) {
   const { me, can } = useSession();
   const qc = useQueryClient();
   const chart = useQuery({ queryKey: ['chart', patientId], queryFn: () => api.get<Chart>(`/patients/${patientId}/chart`) });
@@ -47,6 +57,15 @@ export function ChartTab({ patientId, patient }: { patientId: string; patient: P
     qc.invalidateQueries({ queryKey: ['encounter'] });
   };
 
+  // Opened from a schedule appointment: show that appointment's visit layer once the chart arrives.
+  const apptVisit = fromAppointment ? (chart.data?.visits.find((v) => v.encounter.appointment_id === fromAppointment.appointmentId) ?? null) : null;
+  const focusedFromAppt = useRef(false);
+  useEffect(() => {
+    if (focusedFromAppt.current || !chart.data) return;
+    focusedFromAppt.current = true;
+    if (apptVisit) setFocus(apptVisit.encounter.id);
+  }, [chart.data, apptVisit]);
+
   const openVisit = chart.data?.visits.find((v) => WRITABLE.includes(v.encounter.status)) ?? null;
   const focused = chart.data?.visits.find((v) => v.encounter.id === focus) ?? null;
   const ledgerVisit = focused ?? openVisit ?? chart.data?.visits[0] ?? null;
@@ -54,9 +73,23 @@ export function ChartTab({ patientId, patient }: { patientId: string; patient: P
   // Charting writes go to the open visit, and only when it is the layer being viewed (or the base layer).
   const canChart = !!openVisit && (focus === 'all' || focus === openVisit.encounter.id) && can('clinical_finding.record');
 
+  // Starting the visit from its appointment links the two (the server checks the appointment is this patient's).
+  const startForAppt = !!fromAppointment && !apptVisit && (fromAppointment.status === null || STARTABLE.includes(fromAppointment.status));
   const startVisit = useMutation({
-    mutationFn: () => api.post('/encounters', { patientId, locationId: patient.patient.home_location_id, chiefComplaint: 'Clinical visit' }),
-    onSuccess: refresh,
+    mutationFn: () =>
+      api.post<{ id: string }>(
+        '/encounters',
+        startForAppt
+          ? { patientId, locationId: fromAppointment!.locationId, appointmentId: fromAppointment!.appointmentId, chiefComplaint: 'Clinical visit' }
+          : { patientId, locationId: patient.patient.home_location_id, chiefComplaint: 'Clinical visit' },
+      ),
+    onSuccess: (r) => {
+      refresh();
+      if (startForAppt) {
+        qc.invalidateQueries({ queryKey: ['schedule'] });
+        setFocus(r.id);
+      }
+    },
   });
 
   if (chart.error) return <div className="err">{errorText(chart.error)}</div>;
@@ -88,11 +121,18 @@ export function ChartTab({ patientId, patient }: { patientId: string; patient: P
           <h2>Visit layers</h2>
           {!openVisit && can('clinical_finding.record') && (
             <button className="btn primary" onClick={() => startVisit.mutate()} disabled={startVisit.isPending}>
-              Start today’s visit
+              {startForAppt ? 'Start visit for this appointment' : 'Start today’s visit'}
             </button>
           )}
         </div>
         {startVisit.error && <div className="err">{errorText(startVisit.error)}</div>}
+        {fromAppointment && !apptVisit && (
+          <p className="hint" role="status">
+            <span aria-hidden="true">ⓘ </span>
+            Nothing has been charted for this appointment yet, so the complete chart is shown.
+            {openVisit && ' Another visit is already open; finish or sign it before starting one for this appointment.'}
+          </p>
+        )}
         <div className="work">
           <ul className="stack" aria-label="Visit layers, newest first">
             <li>
@@ -117,6 +157,14 @@ export function ChartTab({ patientId, patient }: { patientId: string; patient: P
                     <span className="m">
                       <StatusPill status={v.encounter.status} />
                     </span>
+                    {v === apptVisit && (
+                      <>
+                        <br />
+                        <span className="this-appt">
+                          <span aria-hidden="true">◆ </span>From the schedule
+                        </span>
+                      </>
+                    )}
                   </span>
                 </button>
               </li>
