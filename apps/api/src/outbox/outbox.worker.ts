@@ -8,6 +8,7 @@ import { logger } from '../common/logger';
 import { PrescribingService } from '../prescribing/prescribing.service';
 import { BillingService } from '../billing/billing.service';
 import { ClaimsService } from '../billing/claims.service';
+import { TelehealthService } from '../telehealth/telehealth.service';
 
 /** Outbound messaging boundary: Amazon SES / Twilio (BAA tier) in production. */
 export interface MessageSender {
@@ -57,6 +58,7 @@ export class OutboxWorker implements OnModuleDestroy {
     @Inject(MESSAGE_SENDER) private readonly sender: MessageSender,
     @Inject(BillingService) private readonly billing: BillingService,
     @Inject(ClaimsService) private readonly claims: ClaimsService,
+    @Inject(TelehealthService) private readonly telehealth: TelehealthService,
   ) {}
 
   start(intervalMs = 1000) {
@@ -117,6 +119,12 @@ export class OutboxWorker implements OnModuleDestroy {
         case 'security.break_glass_notify':
           // Production: page the practice's privacy officer. Here: a log line with ids only.
           logger.event('security.break_glass_notify', { orgId: job.org_id, grantId: job.payload.grantId });
+          break;
+        case 'telehealth.revoke_live_access':
+          await this.telehealth.revokeLiveAccessFor(job.org_id, job.payload.staffId!, correlationId);
+          break;
+        case 'telehealth.stop_egress':
+          await this.telehealth.stopEgressFor(job.org_id, job.payload.sessionId!);
           break;
         default:
           throw new Error(`Unknown topic ${job.topic}`);

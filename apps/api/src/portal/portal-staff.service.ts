@@ -11,6 +11,7 @@ import {
   StaffThreadRequest,
 } from '@teeth/shared';
 import { DbService, Tx } from '../db/db.service';
+import { afterConsentWithdrawn } from '../telehealth/hooks';
 import { AuditService } from '../audit/audit.service';
 import { AccessService } from '../auth/access.service';
 import type { Actor } from '../auth/actor';
@@ -347,6 +348,7 @@ export class PortalStaffService {
       if (!s) throw notFound('Signed form');
       await this.access.requirePatientAccess(tx, actor, s.patient_id, 'consent.revoke');
       await tx.query('UPDATE consent_signature SET revoked_at = now(), revoke_reason = $2 WHERE id = $1', [signatureId, req.reason]);
+      await afterConsentWithdrawn(tx, actor.orgId, signatureId);
       await this.audit.record(tx, actor, { action: 'consent.revoke', objectType: 'consent_signature', objectId: signatureId, patientId: s.patient_id });
       return { id: signatureId };
     });

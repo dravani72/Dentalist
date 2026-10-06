@@ -1,0 +1,16 @@
+# Local LiveKit server for development: `livekit-server --config config/livekit.dev.yaml`
+# Matches the API's development defaults (RTC_PROVIDER=livekit, key devkey / secret "secret").
+# Never use these keys outside your own machine.
+port: 7880
+bind_addresses: ["127.0.0.1"]
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: false
+  node_ip: 127.0.0.1
+keys:
+  devkey: secret
+webhook:
+  api_key: devkey
+  urls: ["http://localhost:3000/api/webhooks/livekit"]

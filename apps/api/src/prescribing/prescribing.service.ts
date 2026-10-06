@@ -3,6 +3,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { PharmacyPreferenceRequest, PrescriptionDraftRequest, canonicalJson } from '@teeth/shared';
 import { z } from 'zod';
 import { APP_CONFIG, AppConfig } from '../config';
+import { EligibilityService } from '../telehealth/eligibility.service';
+import { caseForEncounter, telehealthErxFailureTask } from '../telehealth/hooks';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { AccessService } from '../auth/access.service';
@@ -29,6 +31,7 @@ export class PrescribingService {
     @Inject(AccessService) private readonly access: AccessService,
     @Inject(ERX_PARTNER) private readonly partner: ErxPartner,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(EligibilityService) private readonly eligibility: EligibilityService,
   ) {}
 
   private scope(actor: Actor) {
@@ -121,7 +124,7 @@ export class PrescribingService {
     return this.partner.screen({ drugKey, allergies: allergies.map((a) => a.substance), medications: meds.map((m) => ({ name: m.medication, isAnticoagulant: m.is_anticoagulant })) });
   }
 
-  async sign(actor: Actor, id: string, req: { pharmacyPreferenceId: string; acknowledgedAlertIds: string[]; idempotencyKey: string }) {
+  async sign(actor: Actor, id: string, req: { pharmacyPreferenceId: string; acknowledgedAlertIds: string[]; idempotencyKey: string; pharmacyConfirmedWithPatient?: boolean }) {
     await this.access.require(actor, 'prescription.sign_noncontrolled', { action: 'prescription.sign', objectId: id });
     await this.access.requireStepUp(actor, 'prescription.sign_noncontrolled', 'prescription.sign');
     return this.db.tx(this.scope(actor), async (tx) => {
@@ -139,7 +142,31 @@ export class PrescribingService {
       if (rx.status !== 'DRAFT') throw conflict(`Prescription is already ${rx.status.toLowerCase()}`);
       if (rx.controlled_schedule) throw forbidden('Controlled-substance prescribing is not enabled');
       const encounterLocation = rx.encounter_id ? (await tx.one<{ location_id: string }>('SELECT location_id FROM encounter WHERE id = $1', [rx.encounter_id]))?.location_id : undefined;
-      const license = await this.access.requireCredential(tx, actor, 'prescription.sign_noncontrolled', encounterLocation ?? homeLocationId, 'prescription.sign');
+      const telehealthCase = rx.encounter_id ? await caseForEncounter(tx, rx.encounter_id) : undefined;
+      let telehealthEvaluationId: string | null = null;
+      let license: { id: string };
+      if (telehealthCase) {
+        // Telehealth (LIC-007, TH-010): authority comes from the patient's jurisdiction, through a
+        // current prescribing decision for this provider; the pharmacy is confirmed with the patient.
+        if (telehealthCase.clinical_hold) throw forbidden('Clinical actions on this visit are paused; resolve the hold first', { reason: 'clinical_hold' });
+        if (!req.pharmacyConfirmedWithPatient) throw invalid('Confirm the pharmacy with the patient before signing', { reason: 'pharmacy_not_confirmed' });
+        const ev = await tx.one<{ id: string }>(
+          `SELECT id FROM eligibility_evaluation WHERE case_id = $1 AND provider_id = $2 AND purpose = 'prescribe_noncontrolled' AND outcome = 'ALLOW'
+            ORDER BY evaluated_at DESC LIMIT 1`,
+          [telehealthCase.id, actor.staffId],
+        );
+        if (!ev) throw forbidden('Check prescribing eligibility for this visit first', { reason: 'telehealth_rx_evaluation_required' });
+        const current = await this.eligibility.assertCurrent(tx, telehealthCase, ev.id, 'prescribe_noncontrolled', actor.staffId);
+        const cred = await tx.one<{ id: string }>(
+          "SELECT id FROM credential WHERE id = $1 AND staff_member_id = $2 AND status = 'active' AND (expires_on IS NULL OR expires_on >= current_date)",
+          [current.selected_credential_id, actor.staffId],
+        );
+        if (!cred) throw forbidden('The license this decision relied on is no longer active', { reason: 'credential_inactive' });
+        license = cred;
+        telehealthEvaluationId = current.id;
+      } else {
+        license = await this.access.requireCredential(tx, actor, 'prescription.sign_noncontrolled', encounterLocation ?? homeLocationId, 'prescription.sign');
+      }
 
       // Re-screen at signing time: the allergy list may have changed since the draft.
       const alerts = await this.screen(tx, rx.patient_id, rx.drug_key);
@@ -177,9 +204,9 @@ export class PrescribingService {
       await tx.query(
         `UPDATE prescription SET status = 'QUEUED', signed_by = $2, signed_at = now(), prescriber_credential_id = $3, step_up_method = $4,
                 pharmacy_preference_id = $5, pharmacy_snapshot = $6, alerts = $7, acknowledged_alert_ids = $8, content_hash = $9,
-                idempotency_key = $10, version = version + 1, locked_at = now()
+                idempotency_key = $10, telehealth_evaluation_id = $11, version = version + 1, locked_at = now()
           WHERE id = $1`,
-        [id, actor.staffId, license.id, actor.stepUpMethod, pref.id, JSON.stringify(snapshot), JSON.stringify(alerts), req.acknowledgedAlertIds, contentHash, req.idempotencyKey],
+        [id, actor.staffId, license.id, actor.stepUpMethod, pref.id, JSON.stringify(snapshot), JSON.stringify(alerts), req.acknowledgedAlertIds, contentHash, req.idempotencyKey, telehealthEvaluationId],
       );
       await tx.query("INSERT INTO prescription_event (org_id, prescription_id, status, source, actor_id) VALUES ($1,$2,'SIGNED','app',$3), ($1,$2,'QUEUED','app',$3)", [actor.orgId, id, actor.staffId]);
       await tx.query(
@@ -243,6 +270,24 @@ export class PrescribingService {
     );
     if (!rx) throw notFound('Prescription');
     if (rx.status !== 'QUEUED') return { skipped: rx.status };
+    if (rx.telehealth_evaluation_id) {
+      // Telehealth prescriptions re-check authority right before transmission: a license suspended
+      // or a rule withdrawn after signing stops the send and becomes an owned follow-up task.
+      const blocked = await this.db.tx({ orgId }, async (tx) => {
+        const c = await caseForEncounter(tx, rx.encounter_id as string);
+        if (!c) return 'telehealth_case_missing';
+        try {
+          await this.eligibility.assertCurrent(tx, c, rx.telehealth_evaluation_id as string, 'prescribe_noncontrolled', rx.signed_by, { ignoreExpiry: true });
+          return null;
+        } catch (err) {
+          return ((err as { details?: { reason?: string } }).details?.reason) ?? 'eligibility_changed';
+        }
+      });
+      if (blocked) {
+        await this.transmitFailed(orgId, prescriptionId, `Not sent: telehealth authority changed before transmission (${blocked})`, correlationId);
+        return { blocked };
+      }
+    }
     const ctx = await this.db.tx({ orgId }, async (tx) => ({
       patient: await tx.one<{ legal_given_name: string; legal_family_name: string; date_of_birth: string }>('SELECT legal_given_name, legal_family_name, date_of_birth FROM patient WHERE id = $1', [rx.patient_id]),
       prescriber: await tx.one<{ display_name: string }>('SELECT display_name FROM staff_member WHERE id = $1', [rx.signed_by]),
@@ -279,6 +324,7 @@ export class PrescribingService {
       if (!rx) return;
       await tx.query("INSERT INTO prescription_event (org_id, prescription_id, status, detail, source) VALUES ($1,$2,'ERROR',$3,'worker')", [orgId, prescriptionId, error.slice(0, 200)]);
       await this.audit.record(tx, systemActor(orgId, correlationId, 'erx-worker'), { action: 'prescription.transmit', outcome: 'error', objectType: 'prescription', objectId: prescriptionId, patientId: rx.patient_id });
+      await telehealthErxFailureTask(tx, orgId, prescriptionId, null);
     });
   }
 
@@ -308,6 +354,7 @@ export class PrescribingService {
       if (!rx) throw notFound('Prescription');
       if (rx.status === 'SENT' || rx.status === 'QUEUED') {
         await tx.query('UPDATE prescription SET status = $2, version = version + 1 WHERE id = $1', [owner.prescription_id, evt.status]);
+        if (evt.status === 'ERROR') await telehealthErxFailureTask(tx, owner.org_id, owner.prescription_id, null);
       }
       await tx.query(
         "INSERT INTO prescription_event (org_id, prescription_id, status, detail, source, partner_event_id, occurred_at) VALUES ($1,$2,$3,$4,'partner_webhook',$5,$6)",

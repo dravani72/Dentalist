@@ -7,10 +7,11 @@ import type { Actor } from '../auth/actor';
 import { RECORD_SIGNER, RecordSigner, sha256Hex } from '../crypto/keys';
 import { conflict, invalid, notFound } from '../common/errors';
 import { ChartService, EncounterRow, effectiveWhere, entrySelect } from './chart.service';
+import { afterTelehealthSign, telehealthAuthority, telehealthPayload, verifyTelehealthBlock, type TelehealthBlock } from '../telehealth/hooks';
 import { ENTRY_KINDS, EntryKind, canonicalEntry } from './entry-kinds';
 
 const PAYLOAD_KINDS: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'anesthetic', 'material', 'note', 'media'];
-const LOCK_TABLES = ['clinical_finding', 'existing_restoration', 'diagnosis', 'planned_procedure', 'procedure_occurrence', 'procedure_material', 'anesthetic_event', 'encounter_note', 'media_object'];
+const LOCK_TABLES = ['telehealth_assessment', 'clinical_finding', 'existing_restoration', 'diagnosis', 'planned_procedure', 'procedure_occurrence', 'procedure_material', 'anesthetic_event', 'encounter_note', 'media_object'];
 /** Procedure statuses that may stand in a signed record. */
 const SIGNABLE_PROCEDURE = ['CLINICALLY_VERIFIED', 'VOIDED_WITH_REASON', 'AMENDED', 'SIGNED'];
 
@@ -73,7 +74,7 @@ export class SigningService {
       if (!findTransition(ENCOUNTER_TRANSITIONS, e.status, 'VERIFIED')) {
         throw conflict(`Visit is ${e.status.replace(/_/g, ' ').toLowerCase()}; send it for review first`);
       }
-      await this.access.requireCredential(tx, actor, 'procedure.verify', e.location_id, 'encounter.verify');
+      await this.authority(tx, actor, 'procedure.verify', e, 'encounter.verify');
       const procedures = await tx.query<{ id: string; status: string }>(
         `SELECT e.id, e.status FROM procedure_occurrence e WHERE ${effectiveWhere('procedure')}`,
         [id],
@@ -110,7 +111,7 @@ export class SigningService {
       if (e.status !== 'VERIFIED' && e.status !== 'AMENDING') {
         throw conflict(`Visit is ${e.status.replace(/_/g, ' ').toLowerCase()}; it must be verified before signing`);
       }
-      const credential = await this.access.requireCredential(tx, actor, 'encounter.sign', e.location_id, 'encounter.sign');
+      const credential = await this.authority(tx, actor, 'encounter.sign', e, 'encounter.sign');
       const amendment = e.status === 'AMENDING'
         ? await tx.one<{ id: string; reason: string; signed_version_id: string }>("SELECT id, reason, signed_version_id FROM amendment WHERE encounter_id = $1 AND status = 'open'", [id])
         : undefined;
@@ -159,6 +160,7 @@ export class SigningService {
         "UPDATE encounter SET status = 'SIGNED', signed_by = $2, signed_at = now(), current_version_no = $3, version = version + 1 WHERE id = $1",
         [id, actor.staffId, versionNo],
       );
+      await afterTelehealthSign(tx, actor, id);
       // Billing picks up the signed work: charges post automatically where a code and fee exist.
       await tx.query("INSERT INTO outbox (org_id, topic, payload, idempotency_key) VALUES ($1, 'billing.post_charges', $2, $3)", [
         actor.orgId,
@@ -182,7 +184,7 @@ export class SigningService {
       const e = await this.chart.loadEncounter(tx, id, true);
       await this.access.requirePatientAccess(tx, actor, e.patient_id, 'encounter.amend');
       if (e.status !== 'SIGNED') throw conflict('Only a signed visit can be amended');
-      await this.access.requireCredential(tx, actor, 'encounter.amend', e.location_id, 'encounter.amend');
+      await this.authority(tx, actor, 'encounter.amend', e, 'encounter.amend');
       const v = await tx.one<{ id: string }>('SELECT id FROM encounter_version WHERE encounter_id = $1 AND version_no = $2', [id, e.current_version_no]);
       const a = await tx.one<{ id: string }>(
         'INSERT INTO amendment (org_id, encounter_id, signed_version_id, reason, started_by) VALUES ($1,$2,$3,$4,$5) RETURNING id',
@@ -210,7 +212,8 @@ export class SigningService {
       if (sha256Hex(v.canonical_payload) !== v.content_hash) issues.push(`v${v.version_no}: stored payload does not match its hash`);
       if (v.key_id !== this.signer.keyId) issues.push(`v${v.version_no}: signed with key ${v.key_id}, cannot verify with ${this.signer.keyId}`);
       else if (!(await this.signer.verify(v.content_hash, v.signature))) issues.push(`v${v.version_no}: signature invalid`);
-      const payload = JSON.parse(v.canonical_payload) as { entries: Record<string, Record<string, unknown>[]> };
+      const payload = JSON.parse(v.canonical_payload) as { entries: Record<string, Record<string, unknown>[]>; telehealth?: TelehealthBlock };
+      if (payload.telehealth && !(await verifyTelehealthBlock(tx, payload.telehealth))) issues.push(`v${v.version_no}: telehealth assessment or its evidence differs from what was signed`);
       for (const kind of PAYLOAD_KINDS) {
         for (const entry of payload.entries[kind] ?? []) {
           const row = await tx.one(entrySelect(kind, 'e.id = $1'), [entry.id]);
@@ -237,6 +240,7 @@ export class SigningService {
   }
 
   private async buildPayload(tx: Tx, e: EncounterRow, versionNo: number, amendment: { id: string; reason: string } | null) {
+    const telehealth = await telehealthPayload(tx, e.id);
     const entries: Record<string, unknown[]> = {};
     for (const kind of PAYLOAD_KINDS) {
       const rows = await tx.query(entrySelect(kind, effectiveWhere(kind)) + ' ORDER BY e.id', [e.id]);
@@ -256,7 +260,23 @@ export class SigningService {
       versionNo,
       amendment,
       entries,
+      // Telehealth visits only: disposition, location, eligibility, consent and participant
+      // references the dentist attests to. Absent for in-person visits, so their hashes are unchanged.
+      ...(telehealth ? { telehealth } : {}),
     };
+  }
+
+  /**
+   * The license an attestation rests on. A telehealth visit uses the license its clinical start
+   * was authorized under (the patient's physical jurisdiction); every other visit uses the
+   * practice location's state.
+   */
+  private async authority(tx: Tx, actor: Actor, privilege: 'procedure.verify' | 'encounter.sign' | 'encounter.amend', e: EncounterRow, action: string) {
+    const remote = await telehealthAuthority(tx, actor, e.id).catch(async (err) => {
+      await this.audit.recordDetached({ orgId: actor.orgId, actor }, { action, outcome: 'denied', objectType: 'encounter', objectId: e.id, patientId: e.patient_id, details: { reason: 'telehealth_authority_missing' } });
+      throw err;
+    });
+    return remote ?? this.access.requireCredential(tx, actor, privilege, e.location_id, action);
   }
 
   /** Field-level summary of what an amendment changed relative to the version it amends. */

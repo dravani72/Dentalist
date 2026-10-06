@@ -22,6 +22,8 @@ export interface StaffSpec {
   title?: string;
   license?: { state: string; expiresOn?: string; status?: string };
   npi?: string;
+  /** Verified licenses in the synthetic test jurisdictions (ZZ, ZY) for telehealth development. */
+  telehealthLicenses?: string[];
   extraPrivileges?: Privilege[];
   withoutPrivileges?: Privilege[];
 }
@@ -38,6 +40,7 @@ export interface Tenant {
   locationId: string;
   operatoryIds: string[];
   appointmentTypes: Record<string, string>;
+  virtualRoomIds: string[];
   billing: Awaited<ReturnType<typeof seedDemoBilling>>;
   staff: Record<string, { staffId: string; userId: string; totpSecret: string; email: string; privileges: Privilege[]; name: string; role: string }>;
 }
@@ -107,14 +110,67 @@ export async function createTenant(owner: Client, cipher: LocalFieldCipher, spec
         [orgId, staffId, s.title ?? null, `SYN-${Math.floor(Math.random() * 1e6)}`, s.license.state, s.license.status ?? 'active', s.license.expiresOn ?? '2030-12-31'],
       );
     }
+    for (const state of s.telehealthLicenses ?? []) {
+      await owner.query(
+        `INSERT INTO credential (org_id, staff_member_id, kind, title, identifier, state, status, expires_on, verified_at, verification_source, verification_expires_on, authority_type)
+         VALUES ($1,$2,'dental_license',$3,$4,$5,'active','2030-12-31', now(), 'Synthetic fixture (not a real board lookup)', '2099-12-31', 'full_license')`,
+        [orgId, staffId, s.title ?? null, `SYN-${state}-${Math.floor(Math.random() * 1e6)}`, state],
+      );
+    }
     if (s.npi) {
       await owner.query("INSERT INTO credential (org_id, staff_member_id, kind, identifier, status) VALUES ($1,$2,'npi',$3,'active')", [orgId, staffId, s.npi]);
     }
     staff[s.key] = { staffId, userId, totpSecret, email: s.email, privileges, name: s.name, role: s.role };
   }
   const billing = await seedDemoBilling(owner, orgId, Object.values(staff)[0]!.staffId);
-  return { orgId, locationId, operatoryIds, appointmentTypes, billing, staff };
+  const virtualRoomIds = await seedTelehealth(owner, orgId, locationId, Object.values(staff)[0]!.staffId, appointmentTypes);
+  return { orgId, locationId, operatoryIds, appointmentTypes, virtualRoomIds, billing, staff };
 }
+
+/**
+ * Telehealth setup for a synthetic practice: a virtual appointment type, two virtual rooms and the
+ * telehealth and recording consent forms. The consent wording is placeholder text written for
+ * development; a practice must replace it with wording its counsel approved.
+ */
+async function seedTelehealth(owner: Client, orgId: string, locationId: string, createdBy: string, appointmentTypes: Record<string, string>) {
+  const t = await owner.query<{ id: string }>(
+    "INSERT INTO appointment_type (org_id, name, chair_minutes, provider_minutes, provider_kind, online_bookable, is_virtual) VALUES ($1,'Telehealth triage (video)',20,20,'dentist',false,true) RETURNING id",
+    [orgId],
+  );
+  appointmentTypes.virtual = t.rows[0]!.id;
+  const rooms: string[] = [];
+  for (const name of ['Virtual room 1', 'Virtual room 2']) {
+    const r = await owner.query<{ id: string }>("INSERT INTO resource (org_id, location_id, kind, name) VALUES ($1,$2,'virtual_room',$3) RETURNING id", [orgId, locationId, name]);
+    rooms.push(r.rows[0]!.id);
+  }
+  for (const [key, title, body] of TELEHEALTH_CONSENTS) {
+    await owner.query('INSERT INTO consent_template (org_id, template_key, version, title, body, created_by) VALUES ($1,$2,1,$3,$4,$5)', [orgId, key, title, body, createdBy]);
+  }
+  return rooms;
+}
+
+const TELEHEALTH_CONSENTS: [string, string, string][] = [
+  [
+    'telehealth_care',
+    'Consent to a dental video visit (SYNTHETIC PLACEHOLDER: needs legal review)',
+    [
+      'I, {{patient_name}}, agree to a dental visit by secure video with {{provider_name}} or another dentist of this practice.',
+      'I understand a video visit cannot replace an in-person exam or X-rays. The dentist may not be able to find every problem and may ask me to come in.',
+      'I will say where I am at the start of the visit, and again if I move. If the video drops, the practice will call me back at the number I give.',
+      'In an emergency I will call 911 or go to the nearest emergency room. I can stop the visit at any time.',
+    ].join('\n\n'),
+  ],
+  [
+    'telehealth_recording',
+    'Consent to record the audio of video visits (SYNTHETIC PLACEHOLDER: needs legal review)',
+    [
+      'I, {{patient_name}}, agree that the practice may record the audio of my video visits to help write my dental record.',
+      'Video is never recorded. Everyone in the visit will be told before recording starts, and recording stops if anyone present does not agree.',
+      'Saying no does not change my care. I can withdraw this consent at any time in the patient portal.',
+    ].join('\n\n'),
+  ],
+];
+
 
 /**
  * An Actor for scripted work (seed data, tests) backed by a real session row with a fresh
@@ -148,8 +204,8 @@ export const MAPLE: TenantSpec = {
   location: { name: 'Main Street office', address: '100 Main St', city: 'Springfield', state: 'IL', zip: '62701', tz: 'America/Chicago' },
   operatories: ['Op 1', 'Op 2', 'Op 3 (hygiene)'],
   staff: [
-    { key: 'amy', name: 'Amy Jones, DDS', email: 'amy.jones@maple.example.test', role: 'dentist', title: 'DDS', license: { state: 'IL' }, npi: '0000000001' },
-    { key: 'lee', name: 'Marcus Lee, DDS', email: 'marcus.lee@maple.example.test', role: 'dentist', title: 'DDS', license: { state: 'IL' }, npi: '0000000002' },
+    { key: 'amy', name: 'Amy Jones, DDS', email: 'amy.jones@maple.example.test', role: 'dentist', title: 'DDS', license: { state: 'IL' }, npi: '0000000001', telehealthLicenses: ['ZZ'] },
+    { key: 'lee', name: 'Marcus Lee, DDS', email: 'marcus.lee@maple.example.test', role: 'dentist', title: 'DDS', license: { state: 'IL' }, npi: '0000000002', telehealthLicenses: ['ZZ'] },
     { key: 'jane', name: 'Jane Smith, CDA', email: 'jane.smith@maple.example.test', role: 'dental_assistant', title: 'CDA' },
     { key: 'rosa', name: 'Rosa Diaz, RDH', email: 'rosa.diaz@maple.example.test', role: 'hygienist', title: 'RDH' },
     { key: 'frank', name: 'Frank Ito', email: 'frank.ito@maple.example.test', role: 'front_desk' },
@@ -163,5 +219,5 @@ export const RIVERBEND: TenantSpec = {
   orgName: 'Riverbend Family Dentistry (synthetic)',
   location: { name: 'Riverbend', address: '5 River Rd', city: 'Columbus', state: 'OH', zip: '43004', tz: 'America/New_York' },
   operatories: ['Chair A', 'Chair B'],
-  staff: [{ key: 'omar', name: 'Omar Khan, DMD', email: 'omar.khan@riverbend.example.test', role: 'dentist', title: 'DMD', license: { state: 'OH' }, npi: '0000000003' }],
+  staff: [{ key: 'omar', name: 'Omar Khan, DMD', email: 'omar.khan@riverbend.example.test', role: 'dentist', title: 'DMD', license: { state: 'OH' }, npi: '0000000003', telehealthLicenses: ['ZZ'] }],
 };

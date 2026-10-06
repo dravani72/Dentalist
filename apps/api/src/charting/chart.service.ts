@@ -1,5 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
+  RADIOGRAPHIC_FINDING_TYPES,
+  RADIOGRAPH_MODALITIES,
   CreateEncounterRequest,
   DiagnosisRequest,
   ENCOUNTER_WRITABLE,
@@ -27,6 +29,7 @@ import type { Actor } from '../auth/actor';
 import { conflict, invalid, notFound } from '../common/errors';
 import { ENTRY_KINDS, EntryKind, PROCEDURE_DETAIL_COLUMNS } from './entry-kinds';
 import { suggestBillingCode } from '../billing/codes';
+import { caseForEncounter } from '../telehealth/hooks';
 
 export interface EncounterRow {
   id: string;
@@ -217,14 +220,43 @@ export class ChartService {
       const { e, amendmentId } = await this.writableEncounter(tx, actor, encounterId, 'finding.create');
       const tooth = await this.toothInstance(tx, actor, e.patient_id, req.tooth);
       const surfaces = this.checkSurfaces(tooth.position, req.surfaces);
+      const remote = await this.remoteFindingFields(tx, e.id, e.patient_id, req);
       const r = await tx.one<{ id: string }>(
-        `INSERT INTO clinical_finding (org_id, patient_id, encounter_id, tooth_instance_id, surfaces, category, finding_type, certainty, note, recorded_by, amendment_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-        [actor.orgId, e.patient_id, encounterId, tooth.id, surfaces, req.category, req.findingType, req.certainty, req.note ?? null, actor.staffId, amendmentId],
+        `INSERT INTO clinical_finding (org_id, patient_id, encounter_id, tooth_instance_id, surfaces, category, finding_type, certainty, note, recorded_by, amendment_id,
+                                       assessment_modality, source_media_id, remote_exam_limitations, evidence_quality)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+        [actor.orgId, e.patient_id, encounterId, tooth.id, surfaces, req.category, req.findingType, req.certainty, req.note ?? null, actor.staffId, amendmentId,
+         remote.modality, remote.sourceMediaId, remote.limitations, remote.evidenceQuality],
       );
-      await this.audit.record(tx, actor, { action: 'finding.create', objectType: 'clinical_finding', objectId: r!.id, patientId: e.patient_id, details: { encounterId } });
+      await this.audit.record(tx, actor, { action: 'finding.create', objectType: 'clinical_finding', objectId: r!.id, patientId: e.patient_id, details: { encounterId, modality: remote.modality } });
       return r;
     });
+  }
+
+  /**
+   * How a finding was observed (TH-005). Findings on a telehealth visit default to video and must
+   * state their limits and evidence quality; a finding that needs a radiograph cannot be recorded
+   * remotely unless it cites a radiograph of this patient.
+   */
+  private async remoteFindingFields(tx: Tx, encounterId: string, patientId: string, req: FindingRequest) {
+    const telehealth = await caseForEncounter(tx, encounterId);
+    const modality = req.assessmentModality ?? (telehealth ? 'synchronous_video' : 'in_person');
+    if (modality === 'in_person') {
+      if (telehealth) throw invalid('This is a telehealth visit; record how the finding was observed remotely');
+      return { modality, sourceMediaId: req.sourceMediaId ?? null, limitations: null, evidenceQuality: null };
+    }
+    if (!req.remoteExamLimitations || !req.evidenceQuality) throw invalid('Remote findings need the exam limitations and the evidence quality');
+    let mediaModality: string | null = null;
+    if (req.sourceMediaId) {
+      const m = await tx.one<{ modality: string }>('SELECT modality FROM media_object WHERE id = $1 AND patient_id = $2 AND NOT entered_in_error', [req.sourceMediaId, patientId]);
+      if (!m) throw invalid('The cited image is not in this patient’s record');
+      mediaModality = m.modality;
+    }
+    if (RADIOGRAPHIC_FINDING_TYPES.includes(req.findingType as (typeof RADIOGRAPHIC_FINDING_TYPES)[number])
+        && !(mediaModality && (RADIOGRAPH_MODALITIES as readonly string[]).includes(mediaModality))) {
+      throw invalid('This finding needs a radiograph; it cannot be confirmed from video or photos. Cite a radiograph or record a referral instead.', { reason: 'radiograph_required' });
+    }
+    return { modality, sourceMediaId: req.sourceMediaId ?? null, limitations: req.remoteExamLimitations, evidenceQuality: req.evidenceQuality };
   }
 
   async addExisting(actor: Actor, encounterId: string, req: z.infer<typeof ExistingRestorationRequest>) {

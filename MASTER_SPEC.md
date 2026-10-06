@@ -753,6 +753,20 @@ Patient/authorized representative functions:
 
 Delegated access requires explicit relationship/authorization modeling.
 
+## 16a. Telehealth triage
+
+Synchronous dental triage by video is a core capability with its own provider workspace, not a video widget inside the chart. The normative module specification is `docs/architecture/telehealth/handoff-v1.1.0.md` (TH-001–TH-016, LIC-*, AT01–AT22); where it and this document differ, this document's priority order and hard prohibitions win.
+
+- Telehealth reuses the patient, appointment, encounter, chart entry, media, consent, prescription, signature, audit and revenue objects. It adds a triage case, versioned structured intake, sessions, participants, location confirmations and eligibility evaluations.
+- Case, session and encounter status are separate axes. Ending a call never signs a note; a no-show or cancellation never creates a procedure or claim.
+- Clinical care requires the patient's current, confirmed, stationary location, signed telehealth consent and an eligibility evaluation showing jurisdiction-specific authority for that purpose. Mailing or pharmacy address is irrelevant. Evaluations expire and are re-checked before every clinical action; a change of location, consent, credential, rule or assignment pauses clinical actions.
+- A state is unavailable until its rule is legally reviewed, approved by a second person and in date. Unknown is never treated as allowed.
+- Emergency symptoms are screened before queueing or payment, with deterministic escalation; the protocol is approved and versioned by licensed clinical leadership.
+- Remote findings state their modality, limitations and evidence quality, and cannot claim radiographic findings without a cited radiograph.
+- Recording needs separate consent from every participant, is audio only, and can be refused without blocking otherwise lawful care. No permanent video is stored; still frames are deliberate PNG snapshots.
+- Telehealth prescribing needs a documented assessment, a purpose-specific evaluation and a pharmacy confirmed with the patient. Controlled prescribing by telehealth stays disabled until EPCS and remote-authority rules are implemented and reviewed.
+- Conversion to in-person care books an appointment with lineage to the case; planned work stays planned.
+
 ## 17. Insurance and revenue cycle
 
 Clinical data generates claim candidates; claims do not define the clinical chart.
@@ -1083,7 +1097,8 @@ No production release if any of the following are unresolved:
 - portal;
 - forms/consents;
 - secure messaging;
-- appointment confirmations.
+- appointment confirmations;
+- telehealth triage (§16a) with synthetic jurisdictions until real state rules are reviewed.
 
 ### Phase 4 — eRx
 
@@ -1136,7 +1151,8 @@ The MVP is clinically meaningful when a practice can:
 9. retrieve a complete audit history;
 10. store/select a patient pharmacy and send a non-controlled prescription through an approved external partner;
 11. give the patient controlled portal access to designated records/functions;
-12. demonstrate tenant isolation, backup/restore, access controls and PHI-safe logging.
+12. demonstrate tenant isolation, backup/restore, access controls and PHI-safe logging;
+13. run a telehealth triage visit from portal request through eligibility, video, documented assessment, sign-off and in-person booking or prescription, with synthetic data (§16a, TH-016).
 
 ## 31. Product differentiation
 
