@@ -9,11 +9,14 @@ import { ERX_PARTNER } from './prescribing/erx-partner';
 import { FakeErxPartner } from './prescribing/fake-erx-partner';
 import { PrescribingService } from './prescribing/prescribing.service';
 import { OutboxWorker } from './outbox/outbox.worker';
+import { FakeRtcAdapter, RTC_ADAPTER } from './telehealth/rtc-adapter';
+import { TelehealthService } from './telehealth/telehealth.service';
 
 export async function createApp(overrides: AppOverrides = {}): Promise<INestApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.register(overrides), { rawBody: true, logger });
   app.setGlobalPrefix('api');
-  app.useBodyParser('json', { limit: '20mb' });
+  // LiveKit posts webhooks as application/webhook+json; parsing them as JSON keeps the raw body for signature checks.
+  app.useBodyParser('json', { limit: '20mb', type: ['application/json', 'application/webhook+json'] });
   app.use((req: Request, res: Response, next: NextFunction) => {
     // PHI responses are never cached and never framed.
     res.setHeader('Cache-Control', 'no-store');
@@ -34,6 +37,15 @@ export async function createApp(overrides: AppOverrides = {}): Promise<INestAppl
     const rx = app.get(PrescribingService);
     partner.callback = async (evt) => {
       await rx.handlePartnerEvent(evt, 'sandbox-callback').catch((err) => logger.warn({ msg: 'sandbox callback failed', err }, 'Erx'));
+    };
+  }
+
+  // Sandbox media server: deliver its join/leave events the way the signed webhook would.
+  const rtc = app.get(RTC_ADAPTER);
+  if (rtc instanceof FakeRtcAdapter) {
+    const th = app.get(TelehealthService);
+    rtc.callback = async (evt) => {
+      await th.handleRtcEvent(evt).catch((err) => logger.warn({ msg: 'sandbox rtc event failed', err }, 'Telehealth'));
     };
   }
   return app;

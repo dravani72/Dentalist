@@ -1,0 +1,516 @@
+{
+  "description": "Telehealth jurisdiction registry (LIC-004). One slot per US state plus D.C. Every slot is disabled and unreviewed: no state is implicitly permissive, and no laws or source URLs are invented here. A jurisdiction becomes available only when a reviewed rule version is published with sources, reviewer and approver (two different people), effective dates and fixtures.",
+  "version": "1.1.0",
+  "jurisdictions": [
+    {
+      "code": "AL",
+      "name": "Alabama",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "AK",
+      "name": "Alaska",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "AZ",
+      "name": "Arizona",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "AR",
+      "name": "Arkansas",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "CA",
+      "name": "California",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "CO",
+      "name": "Colorado",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "CT",
+      "name": "Connecticut",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "DE",
+      "name": "Delaware",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "DC",
+      "name": "District of Columbia",
+      "kind": "district",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "FL",
+      "name": "Florida",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "GA",
+      "name": "Georgia",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "HI",
+      "name": "Hawaii",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "ID",
+      "name": "Idaho",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "IL",
+      "name": "Illinois",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "IN",
+      "name": "Indiana",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "IA",
+      "name": "Iowa",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "KS",
+      "name": "Kansas",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "KY",
+      "name": "Kentucky",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "LA",
+      "name": "Louisiana",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "ME",
+      "name": "Maine",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "MD",
+      "name": "Maryland",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "MA",
+      "name": "Massachusetts",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "MI",
+      "name": "Michigan",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "MN",
+      "name": "Minnesota",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "MS",
+      "name": "Mississippi",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "MO",
+      "name": "Missouri",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "MT",
+      "name": "Montana",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "NE",
+      "name": "Nebraska",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "NV",
+      "name": "Nevada",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "NH",
+      "name": "New Hampshire",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "NJ",
+      "name": "New Jersey",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "NM",
+      "name": "New Mexico",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "NY",
+      "name": "New York",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": "The v1.1.0 handoff package says partial official guidance notes exist for NY. They are not included in this repository and do not activate anything: NY stays disabled until complete local legal and clinical review."
+    },
+    {
+      "code": "NC",
+      "name": "North Carolina",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "ND",
+      "name": "North Dakota",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "OH",
+      "name": "Ohio",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "OK",
+      "name": "Oklahoma",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "OR",
+      "name": "Oregon",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "PA",
+      "name": "Pennsylvania",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "RI",
+      "name": "Rhode Island",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "SC",
+      "name": "South Carolina",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "SD",
+      "name": "South Dakota",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "TN",
+      "name": "Tennessee",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "TX",
+      "name": "Texas",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "UT",
+      "name": "Utah",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "VT",
+      "name": "Vermont",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "VA",
+      "name": "Virginia",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "WA",
+      "name": "Washington",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "WV",
+      "name": "West Virginia",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "WI",
+      "name": "Wisconsin",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    },
+    {
+      "code": "WY",
+      "name": "Wyoming",
+      "kind": "state",
+      "enabled": false,
+      "reviewStatus": "unreviewed",
+      "rule": null,
+      "sources": [],
+      "notes": ""
+    }
+  ]
+}

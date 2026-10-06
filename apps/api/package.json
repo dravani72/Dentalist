@@ -20,6 +20,7 @@
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
     "@teeth/shared": "0.1.0",
+    "livekit-server-sdk": "^2.19.1",
     "pg": "^8.16.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",

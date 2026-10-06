@@ -24,6 +24,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Revenue cycle: fees, ledger, insurance, estimates, claims, remittance | 0007; `apps/api/src/billing/*` (`ClearinghousePartner`, `FakeClearinghouse`); `packages/shared/src/billing.ts`; `apps/web/src/pages/billing/*`, portal `billing.tsx`; details in `revenue-cycle.md` |
 | Practice setup: staff, privileges, licenses, provider hours, first sign-in | 0008; `apps/api/src/admin/*`, `src/scheduling/availability.ts`; `packages/shared/src/staff.ts`; `apps/web/src/pages/admin/*`, `AccountSetup.tsx`; details in `practice-setup.md` |
 | Patients tab filters and recall | `apps/api/src/patients/patients.service.ts` `search()`, `src/scheduling/recall.ts`; `PatientListQuery` in `packages/shared/src/schemas.ts`; `apps/web/src/pages/Patients.tsx`. See "Patient filters and recall" below |
+| Telehealth triage: cases, intake, jurisdiction eligibility, sessions, remote findings, signing evidence | 0009; `apps/api/src/telehealth/*` (`RtcAdapter`, `FakeRtcAdapter`); `packages/shared/src/telehealth.ts`; `config/jurisdiction_registry.json`; `apps/web/src/pages/telehealth/*`, portal `telehealth.tsx`; details in `telehealth.md` |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
 ## Deliberate deviations
@@ -39,6 +40,9 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 - **`FakeErxPartner` instead of DoseSpot.** Implements search, screening (allergy cross-reactivity, interactions),
   idempotent transmit and an asynchronous status callback over the real signed webhook path. Controlled substances
   are refused until the certified EPCS phase.
+- **Video: self-hosted LiveKit or a sandbox.** `LiveKitRtcAdapter` (`RTC_PROVIDER=livekit`) gives real video;
+  `FakeRtcAdapter` (default, used by tests) carries no media. Only synthetic jurisdictions ZZ and ZY are enabled.
+  See `telehealth.md`.
 - **Token in sessionStorage.** The web client keeps the opaque session token in memory/sessionStorage. Production
   should move it to an httpOnly, SameSite=strict cookie at the gateway.
 
@@ -78,6 +82,8 @@ combine with each other and with the search box, and work without a search term 
 - Revenue cycle gaps: a real clearinghouse adapter (needs a contract and BAA), claim attachments (x-rays,
   narratives), predeterminations, coordination of benefits on secondary claims (secondary estimates ignore the
   primary payment), claim status inquiry (276/277), statements by mail, payment plans, collections.
+- Telehealth gaps: LiveKit audio egress into the encrypted media store, transcription, the replay buffer, referral
+  records, telehealth billing codes, real state rules (each needs legal review), an approved triage protocol.
 - Perio charting, endo detail, oral surgery, lab cases, DICOM/CBCT viewing (Phase 6).
 - EPCS (Phase 7) and AI assistance (Phase 8).
 - Production adapters: Cognito, KMS, S3, SQS, DoseSpot. Terraform is a skeleton and has never been applied.

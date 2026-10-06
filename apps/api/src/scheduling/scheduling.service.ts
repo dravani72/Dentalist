@@ -92,14 +92,26 @@ export class SchedulingService {
     return this.db.tx(this.scope(actor), async (tx) => {
       await this.access.requirePatientAccess(tx, actor, req.patientId, 'appointment.create');
       await this.assertResources(tx, req.locationId, req.operatoryId, req.providerIds);
-      const type = await tx.one<{ provider_minutes: number }>('SELECT provider_minutes FROM appointment_type WHERE id = $1 AND active', [req.appointmentTypeId]);
+      const type = await tx.one<{ provider_minutes: number; is_virtual: boolean }>('SELECT provider_minutes, is_virtual FROM appointment_type WHERE id = $1 AND active', [req.appointmentTypeId]);
       if (!type) throw notFound('Appointment type');
+      if (type.is_virtual) throw invalid('Virtual visits are booked from the telehealth case, with a virtual room instead of an operatory');
+      if (req.telehealthCaseId) {
+        const c = await tx.one<{ patient_id: string }>('SELECT patient_id FROM telehealth_case WHERE id = $1', [req.telehealthCaseId]);
+        if (!c || c.patient_id !== req.patientId) throw invalid('That telehealth visit is not this patient’s');
+      }
       const a = await tx.one<{ id: string }>(
-        `INSERT INTO appointment (org_id, location_id, patient_id, appointment_type_id, start_at, end_at, provider_active_minutes, note, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        `INSERT INTO appointment (org_id, location_id, patient_id, appointment_type_id, start_at, end_at, provider_active_minutes, note, created_by, telehealth_case_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
         [actor.orgId, req.locationId, req.patientId, req.appointmentTypeId, req.start, req.end,
-         req.providerActiveMinutes ?? type.provider_minutes, req.note ?? null, actor.staffId],
+         req.providerActiveMinutes ?? type.provider_minutes, req.note ?? null, actor.staffId, req.telehealthCaseId ?? null],
       );
+      if (req.telehealthCaseId) {
+        await tx.query(
+          `UPDATE telehealth_task SET status = 'done', appointment_id = $2, outcome_note = 'In-person visit booked', completed_by = $3, completed_at = now(), version = version + 1
+            WHERE case_id = $1 AND kind = 'book_in_person' AND status = 'open'`,
+          [req.telehealthCaseId, a!.id, actor.staffId],
+        );
+      }
       await this.insertResources(tx, actor.orgId, a!.id, req.patientId, req.operatoryId, req.providerIds, req.start, req.end);
       for (const ppId of req.plannedProcedureIds) {
         const pp = await tx.one<{ status: string; patient_id: string }>('SELECT status, patient_id FROM planned_procedure WHERE id = $1', [ppId]);
@@ -120,7 +132,7 @@ export class SchedulingService {
         objectType: 'appointment',
         objectId: a!.id,
         patientId: req.patientId,
-        details: { operatoryId: req.operatoryId, providerIds: req.providerIds, plannedProcedureCount: req.plannedProcedureIds.length },
+        details: { operatoryId: req.operatoryId, providerIds: req.providerIds, plannedProcedureCount: req.plannedProcedureIds.length, telehealthCaseId: req.telehealthCaseId ?? null },
       });
       return { id: a!.id };
     });

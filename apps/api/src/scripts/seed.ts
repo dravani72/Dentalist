@@ -23,6 +23,7 @@ import { ClaimsService } from '../billing/claims.service';
 import { DEFAULT_SCOPES, PORTAL_SCOPES } from '@teeth/shared';
 import { MAPLE, RIVERBEND, SYNTHETIC_PASSWORD, createTenant, scriptedActor } from './fixtures';
 import { XrayTooth, syntheticXraySvg } from './synthetic-xray';
+import { publishSyntheticJurisdictions } from '../telehealth/registry';
 
 async function main() {
   const config = loadConfig();
@@ -35,6 +36,8 @@ async function main() {
     return;
   }
   const cipher = new LocalFieldCipher(config.localKeyDir);
+  // Development only: the synthetic test jurisdictions ZZ and ZY (refused in production).
+  await publishSyntheticJurisdictions(owner);
   const maple = await createTenant(owner, cipher, MAPLE);
   const river = await createTenant(owner, cipher, RIVERBEND);
 
@@ -263,6 +266,8 @@ async function main() {
   console.log('Practice setup: pat.morgan@maple.example.test manages staff, privileges, licenses and working hours (Staff tab).');
   console.log('Patient portal (/#/portal, same password): jordan.rivera@patients.example.test (self), kasia.kowalski@patients.example.test (parent of Lena Kowalski, 12).');
   console.log('Emailed sign-in codes: the portal sign-in screen shows them for synthetic accounts when DEV_TOOLS=1.');
+  console.log('\nTelehealth (Telehealth tab / portal "Video visit"): Jordan requests a visit and gives location ZZ (synthetic test state);');
+  console.log('frank.ito assigns it, amy.jones or marcus.lee confirm their own location (ZZ) and start. Only ZZ and ZY are enabled; ZY has no licensed dentist.');
 }
 
 main().catch((err) => {

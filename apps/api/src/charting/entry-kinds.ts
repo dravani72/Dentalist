@@ -160,5 +160,16 @@ export function canonicalEntry(kind: EntryKind, row: Record<string, unknown>): R
     out.tooth = row.tooth_universal ?? null;
   }
   for (const c of def.clinical) out[c] = norm(row[c] ?? null);
+  // Remote-assessment provenance (telehealth). Added only when present so the canonical form of
+  // in-person entries, and every signature made before telehealth existed, is unchanged.
+  if (kind === 'finding' && row.assessment_modality && row.assessment_modality !== 'in_person') {
+    for (const c of REMOTE_FINDING_COLUMNS) out[c] = norm(row[c] ?? null);
+  }
+  if (kind === 'media' && row.source_session_id) {
+    for (const c of SNAPSHOT_MEDIA_COLUMNS) out[c] = norm(row[c] ?? null);
+  }
   return out;
 }
+
+export const REMOTE_FINDING_COLUMNS = ['assessment_modality', 'source_media_id', 'remote_exam_limitations', 'evidence_quality'] as const;
+export const SNAPSHOT_MEDIA_COLUMNS = ['source_session_id', 'frame_captured_at', 'quality_note'] as const;
