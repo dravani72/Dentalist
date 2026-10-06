@@ -88,6 +88,14 @@ textarea { min-height: 64px; resize: vertical; }
 .pill.review { color: var(--c-planned); }
 .pill.signed { color: var(--c-completed); }
 .pill.amend { color: var(--c-finding); border-style: dotted; }
+/* Recall state: icon + word + border style, so it reads without color. */
+.pill.overdue { color: var(--danger); border-width: 2px; }
+.pill.soon { color: var(--c-planned); border-style: dashed; }
+.pill.later { color: var(--muted); border-style: dotted; }
+
+.filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; align-items: end; }
+.filters .field.active select { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); font-weight: 700; }
+.cellsub { display: block; font-size: 12px; color: var(--muted); }
 
 .banner { border-radius: var(--r); padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
 .banner.patient { background: var(--surface); border: 1px solid var(--line); }

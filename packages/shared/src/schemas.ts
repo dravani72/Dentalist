@@ -89,6 +89,26 @@ export const RecallRequest = z.object({
   lastVisitDate: isoDate,
 });
 
+/** Default recall interval set when a signed visit includes a prophylaxis or periodic exam. */
+export const DEFAULT_RECALL_MONTHS = 6;
+/** Concepts whose signing restarts the patient's hygiene recall. */
+export const RECALL_CONCEPTS = ['prophylaxis', 'periodic_exam'] as const;
+
+/**
+ * Patients tab filters. "In recall" (the active cycle of care) means an open recall with a
+ * next-due date, or treatment that is planned but not yet done.
+ */
+export const PatientListQuery = z.object({
+  q: z.string().trim().max(100).default(''),
+  recall: z.enum(['active', 'overdue', 'due_30']).optional(),
+  appointment: z.enum(['booked', 'none']).optional(),
+  treatment: z.enum(['open', 'unscheduled']).optional(),
+  providerId: uuid.optional(),
+  age: z.enum(['child', 'adult', 'senior']).optional(),
+  balance: z.enum(['owes']).optional(),
+});
+export type PatientListQuery = z.infer<typeof PatientListQuery>;
+
 export const WaitlistRequest = z.object({
   patientId: uuid,
   locationId: uuid,
