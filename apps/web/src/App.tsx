@@ -13,6 +13,7 @@ import { PortalInbox } from './pages/PortalInbox';
 import { BillingPage } from './pages/billing/BillingPage';
 import { StaffAdmin } from './pages/admin/StaffAdmin';
 import { AccountSetup } from './pages/AccountSetup';
+import { TelehealthPage } from './pages/telehealth/TelehealthPage';
 
 export function App() {
   const [token, setTok] = useState(getToken());
@@ -50,6 +51,7 @@ function Authed() {
     [
       ['schedule', 'Schedule', privs.includes('schedule.read')],
       ['patients', 'Patients', privs.includes('patient.read')],
+      ['telehealth', 'Telehealth', privs.includes('telehealth.coordinate') || privs.includes('telehealth.consult')],
       ['portal-inbox', 'Portal inbox', privs.includes('portal.respond') || privs.includes('consent.manage')],
       ['billing', 'Billing', privs.includes('billing.read')],
       ['admin', 'Staff', privs.includes('admin.staff')],
@@ -93,6 +95,7 @@ function Authed() {
           {section === 'audit' && <AuditLog />}
           {section === 'admin' && <StaffAdmin staffId={id} />}
           {section === 'portal-inbox' && <PortalInbox />}
+          {section === 'telehealth' && <TelehealthPage route={route} />}
         </main>
       </div>
     </SessionProvider>

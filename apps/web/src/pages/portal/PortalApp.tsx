@@ -8,6 +8,7 @@ import type { PortalMe, PortalPatient } from './types';
 import { RELATIONSHIP_LABEL, Status } from './ui';
 import { Appointments, Forms, Health, Home, Messages, Plan, Prescriptions, Requests, Settings, Visits } from './sections';
 import { Billing } from './billing';
+import { Telehealth } from './telehealth';
 
 const SYNTHETIC_ACCOUNTS: [string, string][] = [
   ['jordan.rivera@patients.example.test', 'Jordan Rivera (own record)'],
@@ -224,9 +225,10 @@ function AcceptInvitation({ onDone, onCancel }: { onDone: (email: string) => voi
 
 // ------------------------------------------------------------------ signed in
 
-type Section = 'home' | 'appointments' | 'visits' | 'plan' | 'health' | 'prescriptions' | 'billing' | 'messages' | 'forms' | 'requests' | 'settings';
+type Section = 'home' | 'telehealth' | 'appointments' | 'visits' | 'plan' | 'health' | 'prescriptions' | 'billing' | 'messages' | 'forms' | 'requests' | 'settings';
 const SECTIONS: [Section, string, PortalScope | null][] = [
   ['home', 'Home', null],
+  ['telehealth', 'Video visit', 'telehealth'],
   ['appointments', 'Appointments', 'appointments'],
   ['visits', 'Visits', 'visits'],
   ['plan', 'Treatment plan', 'treatment_plan'],
@@ -321,6 +323,8 @@ function PortalAuthed() {
 
 function PortalSection({ section, sub, p, me }: { section: Section; sub?: string; p: PortalPatient; me: PortalMe }) {
   switch (section) {
+    case 'telehealth':
+      return <Telehealth p={p} caseId={sub} />;
     case 'appointments':
       return <Appointments p={p} me={me} />;
     case 'visits':
