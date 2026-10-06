@@ -40,6 +40,7 @@ import { PortalService } from './portal/portal.service';
 import { PortalStaffService } from './portal/portal-staff.service';
 import { PortalAuthController, PortalController, PortalDevController, PortalStaffController } from './portal/portal.controller';
 import { FakeRtcAdapter, RTC_ADAPTER } from './telehealth/rtc-adapter';
+import { LiveKitRtcAdapter } from './telehealth/livekit-adapter';
 import { EligibilityService } from './telehealth/eligibility.service';
 import { TelehealthService } from './telehealth/telehealth.service';
 import { TelehealthPortalService } from './telehealth/telehealth-portal.service';
@@ -66,7 +67,10 @@ export class AppModule {
   static register(overrides: AppOverrides = {}): DynamicModule {
     const config = { ...loadConfig(), ...overrides.config };
     const cipher = new LocalFieldCipher(config.localKeyDir);
-    const rtc = overrides.rtcAdapter ?? new FakeRtcAdapter();
+    if (process.env.NODE_ENV === 'production' && config.rtcProvider === 'livekit' && config.livekit.apiSecret === 'secret') {
+      throw new Error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set in production');
+    }
+    const rtc = overrides.rtcAdapter ?? (config.rtcProvider === 'livekit' ? new LiveKitRtcAdapter(config.livekit) : new FakeRtcAdapter());
     const providers: Provider[] = [
       { provide: APP_CONFIG, useValue: config },
       { provide: FIELD_CIPHER, useValue: cipher },

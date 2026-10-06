@@ -28,6 +28,7 @@ import { CurrentPortalActor, PortalActor, PortalGuard } from '../portal/portal-a
 import { TelehealthService } from './telehealth.service';
 import { TelehealthPortalService } from './telehealth-portal.service';
 import { FakeRtcAdapter, RTC_ADAPTER, RtcAdapter } from './rtc-adapter';
+import { LiveKitRtcAdapter } from './livekit-adapter';
 
 type Infer<T extends z.ZodTypeAny> = z.infer<T>;
 const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -206,7 +207,10 @@ const RtcWebhookEvent = z.object({
 /** Media-server callbacks. Authenticated by HMAC over the raw body, not by a session. */
 @Controller()
 export class RtcWebhookController {
-  constructor(@Inject(TelehealthService) private readonly th: TelehealthService) {}
+  constructor(
+    @Inject(TelehealthService) private readonly th: TelehealthService,
+    @Inject(RTC_ADAPTER) private readonly rtc: RtcAdapter,
+  ) {}
 
   @Public()
   @Post('webhooks/rtc')
@@ -220,6 +224,20 @@ export class RtcWebhookController {
     this.th.verifyWebhook(raw, ts, sig);
     const parsed = RtcWebhookEvent.safeParse(JSON.parse(raw || '{}'));
     if (!parsed.success) throw invalid('Malformed event');
+    return this.th.handleRtcEvent(parsed.data);
+  }
+
+  /** LiveKit's own webhook format (JWT in Authorization over the body's SHA-256). */
+  @Public()
+  @Post('webhooks/livekit')
+  @HttpCode(200)
+  async livekit(@Req() req: Request & { rawBody?: Buffer }, @Headers('authorization') auth: string | undefined) {
+    if (!(this.rtc instanceof LiveKitRtcAdapter)) throw notFound('Route');
+    const evt = await this.rtc.receiveWebhook(req.rawBody?.toString('utf8') ?? '', auth);
+    if (!evt) return { ok: true, ignored: true };
+    const parsed = RtcWebhookEvent.safeParse(evt);
+    // Rooms and identities this system did not create are not ours to act on.
+    if (!parsed.success) return { ok: true, ignored: true };
     return this.th.handleRtcEvent(parsed.data);
   }
 }

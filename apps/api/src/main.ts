@@ -15,7 +15,8 @@ import { TelehealthService } from './telehealth/telehealth.service';
 export async function createApp(overrides: AppOverrides = {}): Promise<INestApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.register(overrides), { rawBody: true, logger });
   app.setGlobalPrefix('api');
-  app.useBodyParser('json', { limit: '20mb' });
+  // LiveKit posts webhooks as application/webhook+json; parsing them as JSON keeps the raw body for signature checks.
+  app.useBodyParser('json', { limit: '20mb', type: ['application/json', 'application/webhook+json'] });
   app.use((req: Request, res: Response, next: NextFunction) => {
     // PHI responses are never cached and never framed.
     res.setHeader('Cache-Control', 'no-store');

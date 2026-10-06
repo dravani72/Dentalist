@@ -74,6 +74,21 @@ sandbox server in the API, so there is no real audio or video.
    admitted, the visit opens, and you can take snapshots, document the assessment, sign, prescribe or book an
    in-person visit.
 
+#### Real video with LiveKit
+
+By default media runs through the sandbox. For real camera and microphone, use LiveKit, the same media server the
+Telorovia application uses:
+
+```sh
+livekit-server --config config/livekit.dev.yaml     # install: https://docs.livekit.io/home/self-hosting/local/
+RTC_PROVIDER=livekit npm run dev:api
+```
+
+Open the dentist and the patient in two browser windows (or two devices on the same machine) and allow camera and
+microphone. The patient waits in the lobby with camera and microphone off until the dentist starts the visit.
+Audio recording needs LiveKit's separate egress service and `LIVEKIT_EGRESS_FILEPATH`; without them the
+**Start audio recording** button says recording is not set up, and the visit continues unrecorded.
+
 Giving location **ZY** shows the "no licensed dentist" path. Recording is refused until everyone signs the separate
 recording consent. See `docs/architecture/telehealth.md`.
 
@@ -102,7 +117,7 @@ npm run verify:integrity          # re-hashes and re-verifies every signed visit
 npm run typecheck
 ```
 
-The API suites (130 tests) cover tenant isolation through row-level security, privilege and license checks,
+The API suites (138 tests) cover tenant isolation through row-level security, privilege and license checks,
 double-booking, sign/lock/amend, database-level immutability, integrity verification, eRx screening and idempotent
 transmission, webhook signature/replay checks, break-glass, the audit hash chain, and the patient portal
 (`test/portal.test.ts`: per-patient database wall, scopes, age rules, revocation, sign-in codes and lockout,

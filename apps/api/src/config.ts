@@ -11,6 +11,9 @@ export interface AppConfig {
   erxWebhookSecret: string;
   /** Shared secret the media server signs its webhook calls with. */
   rtcWebhookSecret: string;
+  /** `sandbox` (default: in-process stand-in, no audio or video) or `livekit`. */
+  rtcProvider: 'sandbox' | 'livekit';
+  livekit: { url: string; apiUrl: string; apiKey: string; apiSecret: string; egressFilepath?: string };
   sessionIdleMinutes: number;
   sessionAbsoluteHours: number;
   breakGlassMinutes: number;
@@ -29,6 +32,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     localMediaDir: path.resolve(root, env.LOCAL_MEDIA_DIR ?? 'var/media'),
     erxWebhookSecret: env.ERX_WEBHOOK_SECRET ?? 'dev-webhook-secret',
     rtcWebhookSecret: env.RTC_WEBHOOK_SECRET ?? 'dev-rtc-webhook-secret',
+    rtcProvider: env.RTC_PROVIDER === 'livekit' ? 'livekit' : 'sandbox',
+    // Defaults match `livekit-server --dev` on this machine; production sets every value.
+    livekit: {
+      url: env.LIVEKIT_URL ?? 'ws://localhost:7880',
+      apiUrl: env.LIVEKIT_API_URL ?? env.LIVEKIT_URL?.replace(/^ws/, 'http') ?? 'http://localhost:7880',
+      apiKey: env.LIVEKIT_API_KEY ?? 'devkey',
+      apiSecret: env.LIVEKIT_API_SECRET ?? 'secret',
+      egressFilepath: env.LIVEKIT_EGRESS_FILEPATH || undefined,
+    },
     sessionIdleMinutes: Number(env.SESSION_IDLE_MINUTES ?? 15),
     sessionAbsoluteHours: Number(env.SESSION_ABSOLUTE_HOURS ?? 12),
     breakGlassMinutes: Number(env.BREAK_GLASS_MINUTES ?? 60),

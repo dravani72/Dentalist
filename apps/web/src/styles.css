@@ -263,3 +263,12 @@ p.warn { background: var(--warn-bg); border: 1.5px dashed var(--c-planned); bord
 .dayrow .block { display: inline-flex; gap: 6px; align-items: center; }
 .hours > .btn { justify-self: start; }
 .formgrid fieldset legend.lbl { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 0; }
+
+/* Telehealth video */
+.video-stage { display: grid; gap: 8px; }
+.video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.video-tile { position: relative; margin: 0; background: #0c0e0f; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); aspect-ratio: 4 / 3; }
+.video-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video-tile.self { max-width: 260px; }
+.video-tile figcaption { position: absolute; left: 0; bottom: 0; padding: 2px 8px; background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 13px; }
+.video-off, .video-wait { display: grid; place-items: center; min-height: 140px; height: 100%; color: #d6dcda; }

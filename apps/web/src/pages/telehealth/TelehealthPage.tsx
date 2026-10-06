@@ -1,10 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DISPOSITIONS, DISPOSITION_LABELS, EVIDENCE_QUALITIES, TASK_KINDS, TRIAGE_PROTOCOL, URGENCIES } from '@teeth/shared';
 import { api, errorText } from '../../lib/api';
 import { fmtStamp, humanize, patientName, todayIn } from '../../lib/format';
 import { useSession } from '../../lib/session';
-import { captureSyntheticFrame, rtcJoin, rtcLeave, type JoinToken } from '../../lib/rtc';
+import { captureSyntheticFrame, isSandbox, rtcJoin, rtcLeave, type JoinToken } from '../../lib/rtc';
+import { VideoStage, type CaptureFn } from '../../components/VideoStage';
 import { Status } from '../portal/ui';
 import { CaseStatus, Eligibility, Urgency, consentStatus, locationStatus, type EvaluationView } from './status';
 
@@ -634,8 +635,15 @@ function LiveSession({ caseId, session, participants, mine, hold, active, lastLo
   const [admit, setAdmit] = useState({ role: 'interpreter', displayName: '', recordingConsent: 'not_asked' });
   const [resumeLoc, setResumeLoc] = useState({ state: lastLocation?.state.trim() ?? '', addressText: lastLocation?.address_text ?? '', callbackPhone: lastLocation?.callback_phone ?? '', stationary: true });
   const act = useAct();
+  const capture = useRef<CaptureFn | null>(null);
   useEffect(() => () => void (joined && rtcLeave(joined)), [joined]);
   const recording = session.recording_status === 'active';
+  const labels = Object.fromEntries(participants.map((p) => [p.id, `${humanize(p.role)} ${p.display_name ?? ''}`.trim()]));
+  const snapshot = () => {
+    const frame = !joined || isSandbox(joined) ? captureSyntheticFrame('Telehealth snapshot') : capture.current?.();
+    if (!frame) throw new Error('There is no patient video to capture yet');
+    return api.post(`/telehealth/sessions/${session.id}/snapshots`, { ...frame, teeth: [] });
+  };
   return (
     <section className="panel">
       <h2>Live session</h2>
@@ -644,9 +652,13 @@ function LiveSession({ caseId, session, participants, mine, hold, active, lastLo
         {recording ? <Status kind="warn">● Recording audio</Status> : <Status kind="no">Not recording</Status>}
         <span className="small muted">Replay buffer: {session.replay_buffer}</span>
       </div>
-      <div className="xray" role="img" aria-label="Video area (sandbox: no camera)" style={{ minHeight: 160, display: 'grid', placeItems: 'center' }}>
-        <span className="muted">{joined ? 'Connected to the sandbox media server (no audio or video in development)' : 'Not connected'}</span>
-      </div>
+      {joined ? (
+        <VideoStage token={joined} labels={labels} captureRef={capture} onLeft={() => setJoined(null)} />
+      ) : (
+        <div className="xray video-wait">
+          <span>Not connected to video</span>
+        </div>
+      )}
       <h3>In the room</h3>
       <ul className="cardlist">
         {participants.map((p) => (
@@ -683,7 +695,7 @@ function LiveSession({ caseId, session, participants, mine, hold, active, lastLo
                 Leave video
               </button>
             )}
-            <button className="btn" disabled={act.busy || !!hold} onClick={() => act.run(() => api.post(`/telehealth/sessions/${session.id}/snapshots`, { ...captureSyntheticFrame('Telehealth snapshot'), teeth: [] }), 'Snapshot saved to the visit')}>
+            <button className="btn" disabled={act.busy || !!hold} onClick={() => act.run(snapshot, 'Snapshot saved to the visit')}>
               Capture snapshot
             </button>
             <button className="btn" disabled={act.busy || (!recording && !!hold)} onClick={() => act.run(() => api.post(`/telehealth/sessions/${session.id}/recording`, { action: recording ? 'stop' : 'start' }))}>

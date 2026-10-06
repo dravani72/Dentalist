@@ -42,7 +42,8 @@ Migration `0009_telehealth.sql`; pure policy in `packages/shared/src/telehealth.
 | Eligibility (LIC-*) | `evaluateEligibility` is pure; `eligibility.service.ts` gathers facts, stores `eligibility_evaluation` with an input digest, and `assertCurrent` re-gathers and compares before every clinical action |
 | Continuation | Changes to location, consent, credential or assignment set `clinical_hold` on the case; clinical actions refuse until a new evaluation passes |
 | Signing | Telehealth signing authority is the start evaluation's credential (the patient's state). The signed payload gains a `telehealth` block (assessment, disposition, location, evaluation, consent, participant and snapshot ids); `verify:integrity` rebuilds it |
-| Media server | `RtcAdapter` interface; `FakeRtcAdapter` sandbox; signed webhook `POST /api/webhooks/rtc` (timestamp + HMAC, duplicates and stale events ignored) |
+| Media server | `RtcAdapter` interface with two implementations: `LiveKitRtcAdapter` (`RTC_PROVIDER=livekit`, the SFU the Telorovia application uses) and `FakeRtcAdapter` (sandbox, default). Webhooks: `POST /api/webhooks/livekit` (LiveKit's signed JWT over the body) and `POST /api/webhooks/rtc` (sandbox HMAC); duplicates and stale events ignored |
+| Video in the browser | `apps/web/src/components/VideoStage.tsx` (`livekit-client` + `@livekit/components-react`): camera tiles, mute and camera controls, connection state, lobby, and PNG snapshots of the patient's live frame |
 | Async work | Outbox topics `telehealth.revoke_live_access` and `telehealth.stop_egress` (idempotency keys per staff/session) |
 | In-person conversion (AT18) | Booking with `telehealthCaseId` stores the lineage on the appointment and completes the open `book_in_person` task |
 
@@ -62,14 +63,23 @@ Audit actions start with `telehealth.` (staff) and `portal.telehealth.` (portal)
 - **Evidence references live in the signed payload.** The handoff suggests reference columns on the assessment.
   Signed chart rows are frozen by `protect_chart_table` at verification, so the ids are written into the signed
   payload instead, where the signature covers them.
-- **Sandbox media server.** No vendor is contracted, so no PHI leaves the system. `FakeRtcAdapter` issues tokens,
-  admits from the lobby, records "audio" and sends signed webhooks; `/api/rtc-sim/*` lets the browser "join". It is
-  registered only with the fake adapter outside production.
+- **LiveKit, self-hosted.** Drew asked for the media package the Telorovia application uses. Self-hosted LiveKit runs
+  on infrastructure the practice operates, so it adds no PHI vendor. LiveKit Cloud would be a new subprocessor and
+  needs a trust-boundary and BAA review first. Differences from Telorovia: join tokens carry only the room and an
+  opaque participant id (Telorovia put the user's email and ids in the token), there are no hidden observers, no
+  data channel (chat) and no screen share, and the SDK logs errors only.
+- **Lobby on LiveKit.** LiveKit has no waiting room, so a waiting patient joins with no publish and no subscribe
+  permission. Starting the visit updates their permissions on the server; the browser turns on camera and
+  microphone only then.
+- **Sandbox media server.** The default. `FakeRtcAdapter` issues tokens, admits from the lobby, records "audio" and
+  sends signed webhooks; `/api/rtc-sim/*` lets the browser "join". It is registered only with the fake adapter
+  outside production.
 
 ## Not built yet
 
-- A real SFU adapter (LiveKit or similar; needs a vendor trust-boundary and BAA review), camera and microphone
-  checks, real video.
+- LiveKit audio egress has not been run end to end: it needs the egress service and an encrypted destination, and the
+  retained audio is not yet pulled into the encrypted media store. A pre-join device check and bandwidth fallback
+  (AT19) are not built.
 - Speech-to-text transcription and the memory-only replay buffer.
 - A structured referral record, FHIR exchange, cross-tenant DSO referrals.
 - Telehealth billing codes (for example D9995/D9996) and patient cost display.

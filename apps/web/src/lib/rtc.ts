@@ -1,7 +1,7 @@
 /**
- * Browser side of the media connection. In development and tests the API runs a sandbox media
- * server that carries no audio or video; "joining" hands it the server-issued token, exactly as a
- * real SFU client would. A production build swaps this for the vendor SDK behind the same calls.
+ * Browser side of the media connection. With LiveKit, `VideoStage` connects with the server-issued
+ * token. With the development sandbox (no audio or video), "joining" hands the token to the API's
+ * stand-in media server, exactly as a real SFU client would.
  */
 export interface JoinToken {
   token: string;
@@ -16,13 +16,15 @@ async function sim(path: 'connect' | 'disconnect' | 'state', token: string) {
   return res.json() as Promise<Record<string, unknown>>;
 }
 
-export const rtcJoin = (t: JoinToken) => sim('connect', t.token);
-export const rtcLeave = (t: JoinToken) => sim('disconnect', t.token).catch(() => undefined);
+export const isSandbox = (t: JoinToken) => t.url.startsWith('sandbox://');
+/** LiveKit connects inside VideoStage; only the sandbox needs an explicit connect call. */
+export const rtcJoin = async (t: JoinToken) => (isSandbox(t) ? sim('connect', t.token) : {});
+export const rtcLeave = async (t: JoinToken) => (isSandbox(t) ? sim('disconnect', t.token).catch(() => undefined) : undefined);
 export const rtcState = (t: JoinToken) => sim('state', t.token) as Promise<{ connected: boolean; grant: { lobby: boolean; canPublish: boolean } | null }>;
 
 /**
- * A deliberately captured still frame. The sandbox has no camera, so this draws a labeled
- * synthetic frame; with a real SFU the same call grabs the current video frame. PNG only.
+ * A deliberately captured still frame for the sandbox, which has no camera: draws a labeled synthetic
+ * frame. With LiveKit, VideoStage grabs the patient's current video frame instead. PNG only.
  */
 export function captureSyntheticFrame(label: string): { dataBase64: string; frameAt: string } {
   const c = document.createElement('canvas');

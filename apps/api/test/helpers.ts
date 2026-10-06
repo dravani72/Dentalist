@@ -48,7 +48,7 @@ export interface Session {
 }
 
 /** Fresh schema, two synthetic practices, the real app on the test database. */
-export async function setupWorld(): Promise<World> {
+export async function setupWorld(opts: { rtcAdapter?: unknown } = {}): Promise<World> {
   process.env.DATABASE_URL = TEST_DB;
   process.env.DATABASE_OWNER_URL = TEST_OWNER_DB;
   await migrate({ reset: true, ownerUrl: TEST_OWNER_DB, quiet: true });
@@ -77,7 +77,7 @@ export async function setupWorld(): Promise<World> {
     erxPartner: partner,
     messageSender: sender,
     clearinghouse,
-    rtcAdapter: rtc,
+    rtcAdapter: opts.rtcAdapter ?? rtc,
   });
   await app.init();
   const http = request(app.getHttpServer());

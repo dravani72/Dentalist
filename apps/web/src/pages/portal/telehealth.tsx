@@ -4,7 +4,8 @@ import { TRIAGE_PROTOCOL } from '@teeth/shared';
 import { errorText, portal } from '../../lib/api';
 import { fmtStamp, humanize } from '../../lib/format';
 import { go } from '../../lib/router';
-import { rtcJoin, rtcLeave, rtcState, type JoinToken } from '../../lib/rtc';
+import { isSandbox, rtcJoin, rtcLeave, rtcState, type JoinToken } from '../../lib/rtc';
+import { VideoStage } from '../../components/VideoStage';
 import { IntakeForm } from '../telehealth/TelehealthPage';
 import { Loading, usePortalQuery } from './sections';
 import type { PortalPatient } from './types';
@@ -269,7 +270,7 @@ function Room({ id, c }: { id: string; c: CaseView }) {
   const act = useAct();
   useEffect(() => () => void (t && rtcLeave(t)), [t]);
   useEffect(() => {
-    if (!t) return;
+    if (!t || !isSandbox(t)) return;
     const timer = window.setInterval(() => void rtcState(t).then((s) => setLobby(s.grant?.lobby ?? null)).catch(() => undefined), 3000);
     return () => window.clearInterval(timer);
   }, [t]);
@@ -281,9 +282,13 @@ function Room({ id, c }: { id: string; c: CaseView }) {
         {lobby === true && <Status kind="wait">The dentist will let you in</Status>}
         {lobby === false && <Status kind="ok">You are in the visit</Status>}
       </div>
-      <div className="xray" role="img" aria-label="Video area (sandbox: no camera)" style={{ minHeight: 140, display: 'grid', placeItems: 'center' }}>
-        <span className="muted">{t ? 'Connected (sandbox: no audio or video in development)' : 'Not connected'}</span>
-      </div>
+      {t ? (
+        <VideoStage token={t} otherLabel="Care team" onLobby={setLobby} onLeft={() => setT(null)} />
+      ) : (
+        <div className="xray video-wait">
+          <span>Not connected to video</span>
+        </div>
+      )}
       <h3>Who is here</h3>
       <ul className="small">
         {c.participants.map((x, i) => (

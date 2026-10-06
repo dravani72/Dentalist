@@ -39,9 +39,9 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 - **`FakeErxPartner` instead of DoseSpot.** Implements search, screening (allergy cross-reactivity, interactions),
   idempotent transmit and an asynchronous status callback over the real signed webhook path. Controlled substances
   are refused until the certified EPCS phase.
-- **`FakeRtcAdapter` instead of a video vendor.** Issues room-scoped tokens, runs the lobby, audio-only recording
-  and signed webhooks; no audio or video is carried. Only synthetic jurisdictions ZZ and ZY are enabled. See
-  `telehealth.md`.
+- **Video: self-hosted LiveKit or a sandbox.** `LiveKitRtcAdapter` (`RTC_PROVIDER=livekit`) gives real video;
+  `FakeRtcAdapter` (default, used by tests) carries no media. Only synthetic jurisdictions ZZ and ZY are enabled.
+  See `telehealth.md`.
 - **Token in sessionStorage.** The web client keeps the opaque session token in memory/sessionStorage. Production
   should move it to an httpOnly, SameSite=strict cookie at the gateway.
 
@@ -63,7 +63,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 - Revenue cycle gaps: a real clearinghouse adapter (needs a contract and BAA), claim attachments (x-rays,
   narratives), predeterminations, coordination of benefits on secondary claims (secondary estimates ignore the
   primary payment), claim status inquiry (276/277), statements by mail, payment plans, collections.
-- Telehealth gaps: a real video adapter (needs a vendor and BAA), transcription, the replay buffer, referral
+- Telehealth gaps: LiveKit audio egress into the encrypted media store, transcription, the replay buffer, referral
   records, telehealth billing codes, real state rules (each needs legal review), an approved triage protocol.
 - Perio charting, endo detail, oral surgery, lab cases, DICOM/CBCT viewing (Phase 6).
 - EPCS (Phase 7) and AI assistance (Phase 8).
