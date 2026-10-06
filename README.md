@@ -27,6 +27,7 @@ Canonical lifecycle:
 
 - `MASTER_SPEC.md` — canonical product and architecture specification.
 - `AGENTS.md` — instructions for AI coding agents and human reviewers.
+- `docs/architecture/telehealth/handoff-v1.1.0.md` — telehealth triage module specification (TH-001–TH-016); `docs/architecture/telehealth.md` maps it to the code.
 - `docs/01_product_charter.md` — scope, goals, non-goals, success criteria.
 - `docs/02_roles_permissions.md` — actors, privilege model, authorization matrix.
 - `docs/03_clinical_domain_model.md` — clinical ontology and longitudinal event model.

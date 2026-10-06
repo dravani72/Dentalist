@@ -37,8 +37,8 @@ code for `.test` accounts (the dev endpoint refuses anything else and is off in 
 
 | Account | Role | Notes |
 | --- | --- | --- |
-| amy.jones@maple.example.test | Dentist | IL license, can verify, sign, prescribe |
-| marcus.lee@maple.example.test | Dentist | IL license |
+| amy.jones@maple.example.test | Dentist | IL license, can verify, sign, prescribe; ZZ license for telehealth |
+| marcus.lee@maple.example.test | Dentist | IL license; ZZ license for telehealth |
 | jane.smith@maple.example.test | Dental assistant | charts, cannot verify or sign |
 | rosa.diaz@maple.example.test | Hygienist | |
 | frank.ito@maple.example.test | Front desk | schedule, demographics, insurance, takes payments; no clinical actions |
@@ -60,6 +60,22 @@ screen shows it for `.test` addresses.
 Grace Okafor has an unused caregiver invitation for Samuel Okafor. Staff manage access on the patient's
 **Portal & forms** tab and work patient messages and requests in **Portal inbox**. See
 `docs/architecture/patient-portal.md`.
+
+### Telehealth
+
+Only the synthetic jurisdictions **ZZ** (consults and non-controlled prescriptions) and **ZY** (consults only, and no
+seeded dentist is licensed there) are enabled; the 50 states and D.C. are listed but disabled. Media runs through a
+sandbox server in the API, so there is no real audio or video.
+
+1. Portal as Jordan: **Video visit** → request a visit, answer the questions, sign the telehealth consent, give
+   location **ZZ** and confirm you are not moving, then check in. Jordan waits in the lobby.
+2. Staff as frank.ito: **Telehealth** → assign the case to Dr. Jones.
+3. Staff as amy.jones: **Telehealth** → confirm your own location (ZZ), open the case and start. The patient is
+   admitted, the visit opens, and you can take snapshots, document the assessment, sign, prescribe or book an
+   in-person visit.
+
+Giving location **ZY** shows the "no licensed dentist" path. Recording is refused until everyone signs the separate
+recording consent. See `docs/architecture/telehealth.md`.
 
 ### Billing
 
@@ -86,18 +102,21 @@ npm run verify:integrity          # re-hashes and re-verifies every signed visit
 npm run typecheck
 ```
 
-The API suites (73 tests) cover tenant isolation through row-level security, privilege and license checks,
+The API suites (130 tests) cover tenant isolation through row-level security, privilege and license checks,
 double-booking, sign/lock/amend, database-level immutability, integrity verification, eRx screening and idempotent
 transmission, webhook signature/replay checks, break-glass, the audit hash chain, and the patient portal
 (`test/portal.test.ts`: per-patient database wall, scopes, age rules, revocation, sign-in codes and lockout,
 consent hashing and immutability, PHI-free notifications, online booking) and the revenue cycle
-(`test/billing.test.ts`: charges from signed work only, append-only ledger, estimates, claims, remittance posted once).
+(`test/billing.test.ts`: charges from signed work only, append-only ledger, estimates, claims, remittance posted once)
+and telehealth (`test/telehealth.test.ts` and `test/telehealth-policy.test.ts`: jurisdiction eligibility, lobby and
+room-scoped tokens, consent-gated audio-only recording, holds on location, consent or license change, signed evidence,
+no-show closure, webhook replay, telehealth prescribing).
 
 ## Layout
 
 ```
 packages/shared   Zod schemas, privileges, anatomy, surfaces, state machines, clinical catalog (no licensed codes)
-apps/api          NestJS modular monolith: auth, audit, patients, scheduling, charting, signing, media, prescribing, outbox, portal
+apps/api          NestJS modular monolith: auth, audit, patients, scheduling, charting, signing, media, prescribing, outbox, portal, billing, admin, telehealth
 apps/web          React + Vite + TanStack Query client
 db/               bootstrap.sql and ordered SQL migrations (RLS, triggers, grants)
 docs/architecture implementation notes (how the plan maps to the code, and what is not built)
