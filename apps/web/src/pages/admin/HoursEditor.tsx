@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { WEEKDAY_LABELS, formatClock, overlappingDays, parseClock } from '@teeth/shared';
-import { api, errorText } from '../../lib/api';
+import { api } from '../../lib/api';
+import { ErrorCallout } from '../../components/Callout';
 import { fmtDate, todayIn } from '../../lib/format';
 import type { HoursRow, Location } from './StaffAdmin';
 
@@ -116,7 +117,7 @@ export function HoursEditor({ staffId, location, hours, onSaved }: { staffId: st
             <p className="hint">Earlier weeks keep the hours they had. Existing bookings are not moved.</p>
           </div>
           {problem && <div className="err">{problem}</div>}
-          {save.error && <div className="err">{errorText(save.error)}</div>}
+          {save.error && <ErrorCallout error={save.error} onDismiss={() => save.reset()} />}
           <div className="row">
             <button className="btn primary" disabled={!!problem || save.isPending}>
               Save hours

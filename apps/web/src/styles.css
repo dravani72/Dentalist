@@ -78,6 +78,14 @@ textarea { min-height: 64px; resize: vertical; }
 .chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
 .err { color: var(--danger); font-size: 14px; font-weight: 700; }
 .err::before { content: "⚠ "; }
+/* Callouts sit inside a screen without replacing it. Icon + title word + border style tell the kinds apart, not color. */
+.callout { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 10px 12px; border-radius: var(--r); background: var(--surface); color: var(--fg); font-size: 14px; border: 1.5px solid var(--line); border-left-width: 6px; }
+.callout-icon { font-size: 18px; line-height: 1.2; }
+.callout-body { flex: 1; min-width: 0; }
+.callout-body > strong { display: block; margin-bottom: 2px; }
+.callout-error { border-color: var(--danger); background: var(--warn-bg); }
+.callout-blocked { border-color: var(--danger); border-style: double; border-left-style: solid; border-width: 3px; border-left-width: 6px; }
+.callout-info { border-style: dashed; border-left-style: solid; }
 .okmsg { color: var(--ok); font-weight: 700; }
 .okmsg::before { content: "✓ "; }
 .hint { color: var(--muted); font-size: 13px; }
@@ -207,6 +215,8 @@ tr.clickable:hover { background: var(--sunken); }
 
 /* Patient portal: narrower, phone-friendly. Status labels pair a word with a symbol and a border style. */
 .page.narrow { max-width: 920px; }
+.page.notice-row { padding-bottom: 0; }
+.page.notice-row .callout { margin: 0; }
 .portal-nav { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1.5px solid var(--line); padding-bottom: 6px; }
 .portal-nav a { text-decoration: none; color: var(--fg); padding: 6px 10px; border-radius: 6px; border: 1.5px solid transparent; }
 .portal-nav a[aria-current="page"] { border-color: var(--accent); font-weight: 700; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }

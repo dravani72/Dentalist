@@ -12,11 +12,12 @@ import {
   TIME_OFF_REASON_LABELS,
   type RoleTemplate,
 } from '@teeth/shared';
-import { api, errorText } from '../../lib/api';
+import { api } from '../../lib/api';
 import { fmtDate, fmtStamp, zonedToIso } from '../../lib/format';
 import { go } from '../../lib/router';
 import { useSession } from '../../lib/session';
 import { Status } from '../portal/ui';
+import { ErrorCallout } from '../../components/Callout';
 import { HoursEditor, hoursSets } from './HoursEditor';
 
 export interface Location {
@@ -102,7 +103,13 @@ function StaffList() {
   const list = useStaffList();
   const [showInactive, setShowInactive] = useState(false);
   if (list.isLoading) return <p>Loading…</p>;
-  if (list.error) return <p className="err">{errorText(list.error)}</p>;
+  if (list.error)
+    return (
+      <>
+        <h1>Staff</h1>
+        <ErrorCallout error={list.error} />
+      </>
+    );
   const { staff, locations } = list.data!;
   const shown = staff.filter((s) => showInactive || s.active);
   const inactive = staff.length - staff.filter((s) => s.active).length;
@@ -347,7 +354,7 @@ function NewStaff() {
         set={(n) => setV(n.roleTemplate !== v.roleTemplate ? { ...n, privileges: [...ROLE_TEMPLATES[n.roleTemplate]], providerKind: n.roleTemplate === 'dentist' || n.roleTemplate === 'hygienist' ? n.roleTemplate : n.providerKind } : n)}
         locations={locations}
       />
-      {create.error && <div className="err">{errorText(create.error)}</div>}
+      {create.error && <ErrorCallout error={create.error} onDismiss={() => create.reset()} />}
       <div className="row">
         <button className="btn primary" disabled={create.isPending || !email || !v.displayName || v.locationIds.length === 0}>
           Add staff member
@@ -364,7 +371,13 @@ function StaffDetailPage({ staffId }: { staffId: string }) {
   const list = useStaffList();
   const detail = useQuery({ queryKey: ['admin-staff', staffId], queryFn: () => api.get<StaffDetail>(`/admin/staff/${staffId}`) });
   if (detail.isLoading || list.isLoading) return <p>Loading…</p>;
-  if (detail.error) return <p className="err">{errorText(detail.error)}</p>;
+  if (detail.error)
+    return (
+      <>
+        <a href="#/admin">Back to staff</a>
+        <ErrorCallout error={detail.error} />
+      </>
+    );
   const d = detail.data!;
   const locations = list.data?.locations ?? [];
   return (
@@ -422,6 +435,7 @@ function AccountPanel({ d }: { d: StaffDetail }) {
     onSuccess: (r) => setSetup(r),
   });
   const err = active.error ?? reset.error ?? reissue.error;
+  const clearErr = () => [active, reset, reissue].forEach((m) => m.reset());
   return (
     <section className="panel">
       <h2>Account</h2>
@@ -475,7 +489,7 @@ function AccountPanel({ d }: { d: StaffDetail }) {
           </div>
         </form>
       )}
-      {err && <div className="err">{errorText(err)}</div>}
+      {err && <ErrorCallout error={err} onDismiss={clearErr} />}
     </section>
   );
 }
@@ -503,7 +517,7 @@ function ProfilePanel({ d, locations }: { d: StaffDetail; locations: Location[] 
     >
       <h2>Role, locations and privileges</h2>
       <ProfileFields v={v} set={(n) => { setV(n); setSaved(false); }} locations={locations} lockPrivileges={d.isSelf} />
-      {save.error && <div className="err">{errorText(save.error)}</div>}
+      {save.error && <ErrorCallout error={save.error} onDismiss={() => save.reset()} />}
       <div className="row">
         <button className="btn primary" disabled={!dirty || save.isPending || v.locationIds.length === 0}>
           Save changes
@@ -557,6 +571,7 @@ function LicensesPanel({ d }: { d: StaffDetail }) {
     onSuccess: refresh,
   });
   const err = add.error ?? verify.error ?? status.error;
+  const clearErr = () => [add, verify, status].forEach((m) => m.reset());
   return (
     <section className="panel">
       <h2>Licenses and identifiers</h2>
@@ -695,7 +710,7 @@ function LicensesPanel({ d }: { d: StaffDetail }) {
           <span className="hint">Licenses start as “waiting for verification”.</span>
         </div>
       </form>
-      {err && <div className="err">{errorText(err)}</div>}
+      {err && <ErrorCallout error={err} onDismiss={clearErr} />}
     </section>
   );
 }
@@ -803,7 +818,7 @@ function TimeOffPanel({ d, locations }: { d: StaffDetail; locations: Location[] 
           </button>
         </div>
       </form>
-      {(add.error || cancel.error) && <div className="err">{errorText(add.error ?? cancel.error)}</div>}
+      {(add.error || cancel.error) && <ErrorCallout error={add.error ?? cancel.error} onDismiss={() => [add, cancel].forEach((m) => m.reset())} />}
     </section>
   );
 }

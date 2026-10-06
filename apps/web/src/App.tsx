@@ -14,6 +14,7 @@ import { BillingPage } from './pages/billing/BillingPage';
 import { StaffAdmin } from './pages/admin/StaffAdmin';
 import { AccountSetup } from './pages/AccountSetup';
 import { TelehealthPage } from './pages/telehealth/TelehealthPage';
+import { Callout } from './components/Callout';
 
 export function App() {
   const [token, setTok] = useState(getToken());
@@ -47,7 +48,7 @@ function Authed() {
   if (!me.data) return <Login />;
   const privs = me.data.privileges;
   // Top-level sections and the privilege each needs; a role lands on the first one it can open.
-  const sections = (
+  const allSections = (
     [
       ['schedule', 'Schedule', privs.includes('schedule.read')],
       ['patients', 'Patients', privs.includes('patient.read')],
@@ -57,11 +58,18 @@ function Authed() {
       ['admin', 'Staff', privs.includes('admin.staff')],
       ['audit', 'Audit log', privs.includes('audit.read')],
     ] as const
-  ).filter(([, , allowed]) => allowed);
-  const [section = sections[0]?.[0] ?? 'schedule', id] = route;
+  );
+  const sections = allSections.filter(([, , allowed]) => allowed);
+  const landing = sections[0]?.[0] ?? 'schedule';
+  // An address this account can't open (often left in the address bar by whoever signed out on
+  // this screen) shows a notice above the landing section instead of an error-only page.
+  const blocked = route[0] && !sections.some(([key]) => key === route[0]) ? route[0] : null;
+  const [section = landing, id] = blocked ? [landing] : route;
   async function logout() {
     await api.post('/auth/logout').catch(() => undefined);
     rememberLoginEmail(null);
+    // The next person to sign in starts on their own landing page, not on this person's last screen.
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     setToken(null);
   }
   const link = (href: string, label: string, key: string) => (
@@ -87,6 +95,11 @@ function Authed() {
             </button>
           </div>
         </header>
+        {blocked && (
+          <div className="page notice-row">
+            <BlockedNotice label={allSections.find(([key]) => key === blocked)?.[1]} landing={sections[0]?.[1]} />
+          </div>
+        )}
         <main className="page">
           {section === 'schedule' && <Schedule />}
           {section === 'patients' && !id && <Patients />}
@@ -99,6 +112,17 @@ function Authed() {
         </main>
       </div>
     </SessionProvider>
+  );
+}
+
+function BlockedNotice({ label, landing }: { label?: string; landing?: string }) {
+  return (
+    <Callout kind="blocked" title={label ? `${label} isn’t part of your access` : 'That page isn’t available'}>
+      {label
+        ? `The address you opened is for the ${label} section, which needs a privilege your account doesn’t have. `
+        : 'The address you opened isn’t a page in this app. '}
+      {landing ? `You’re on ${landing} instead; everything else works as usual.` : 'Everything else works as usual.'} If you need {label ? 'it' : 'access'}, ask a practice administrator.
+    </Callout>
   );
 }
 
