@@ -21,6 +21,13 @@ Every change writes an audit event (`staff.create`, `staff.update` with privileg
 `credential.status`, `provider_hours.set`, `provider_time_off.create`, `provider_time_off.cancel`,
 `auth.setup_complete`). Refusals are audited as `denied` in their own transaction.
 
+A refusal for a missing privilege names it (`details.privilege`, and its plain label in the message) so the person
+knows what to ask an administrator for. In the web app, errors on these screens appear as callouts inside the panel
+(icon, title word and border style, never color alone) with a Dismiss button; the rest of the screen stays usable.
+Signing out clears the address bar, and an address for a section the signed-in person can't open shows a notice above
+their landing section instead of an error-only page (this was the "You do not have permission" seen after a license
+was added and someone else signed in on the same screen).
+
 ## Privileges, templates and provider kind
 
 - Authority comes only from the stored privilege list. The role template is recorded for reference, and the screen

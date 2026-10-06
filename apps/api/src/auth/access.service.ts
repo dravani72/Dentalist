@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { CREDENTIALED_PRIVILEGES, Privilege, STEP_UP_PRIVILEGES, STEP_UP_WINDOW_SECONDS } from '@teeth/shared';
+import { CREDENTIALED_PRIVILEGES, PRIVILEGE_GROUPS, Privilege, STEP_UP_PRIVILEGES, STEP_UP_WINDOW_SECONDS } from '@teeth/shared';
 import { AuditService } from '../audit/audit.service';
 import { Tx } from '../db/db.service';
 import { forbidden, notFound, stepUpRequired } from '../common/errors';
@@ -25,7 +25,8 @@ export class AccessService {
       { action, outcome: 'denied', objectType: extra.objectType as string, objectId: extra.objectId as string,
         patientId: (extra.patientId as string) ?? null, details: { reason, ...extra } },
     );
-    throw forbidden(denialMessage(reason), { reason });
+    // The missing privilege is named (it is not patient information) so the person knows what to ask for.
+    throw forbidden(denialMessage(reason, extra.privilege as Privilege | undefined), { reason, ...(reason === 'missing_privilege' ? { privilege: extra.privilege } : {}) });
   }
 
   /** Requires an explicit privilege. */
@@ -85,10 +86,16 @@ export class AccessService {
   }
 }
 
-function denialMessage(reason: string): string {
+const PRIVILEGE_LABELS = new Map<string, string>(PRIVILEGE_GROUPS.flatMap((g) => g.privileges.map((p) => [p.key, p.label] as const)));
+
+function denialMessage(reason: string, privilege?: Privilege): string {
   switch (reason) {
-    case 'missing_privilege':
-      return 'You do not have permission for this action';
+    case 'missing_privilege': {
+      const label = privilege && PRIVILEGE_LABELS.get(privilege);
+      return label
+        ? `This needs the “${label}” privilege, which your account does not have. Ask a practice administrator if you need it.`
+        : 'You do not have permission for this action';
+    }
     case 'no_active_license_for_location_state':
       return 'An active dental license for this location’s state is required';
     case 'patient_outside_location_scope':

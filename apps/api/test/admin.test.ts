@@ -71,6 +71,21 @@ describe('staff administration: who may do it', () => {
     expect(d.rows[0].n).toBeGreaterThan(0);
   });
 
+  it('names the missing privilege, so the refusal says what to ask for', async () => {
+    // A dentist can't add or verify a license on anyone's profile, their own included.
+    const amy = await w.login(w.maple, 'amy');
+    const lee = w.maple.staff.lee!.staffId;
+    const add = await amy.post(`/api/admin/staff/${lee}/credentials`, { kind: 'dental_license', identifier: 'IL-555', state: 'IL' });
+    expect(add.status).toBe(403);
+    expect(add.body.details).toEqual({ reason: 'missing_privilege', privilege: 'admin.staff' });
+    expect(add.body.message).toContain('“Manage staff, privileges and hours”');
+    expect(add.body.message).toMatch(/practice administrator/);
+    const created = await w.owner.query("SELECT count(*)::int AS n FROM credential WHERE identifier = 'IL-555'");
+    expect(created.rows[0].n).toBe(0);
+    const denied = await w.owner.query("SELECT details FROM audit_event WHERE action = 'credential.create' AND outcome = 'denied' AND object_id = $1", [lee]);
+    expect(denied.rows[0].details).toMatchObject({ reason: 'missing_privilege', privilege: 'admin.staff' });
+  });
+
   it('lists only this practice’s staff', async () => {
     const r = await pat.get('/api/admin/staff');
     expect(r.status).toBe(200);
