@@ -101,7 +101,7 @@ function Authed() {
           </div>
         )}
         <main className="page">
-          {section === 'schedule' && <Schedule />}
+          {section === 'schedule' && <Schedule route={route} />}
           {section === 'patients' && !id && <Patients />}
           {section === 'patients' && id && <PatientWorkspace key={id} patientId={id} initialTab={route[2]} />}
           {section === 'billing' && <BillingPage />}

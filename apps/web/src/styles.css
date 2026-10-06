@@ -290,3 +290,15 @@ p.warn { background: var(--warn-bg); border: 1.5px dashed var(--c-planned); bord
 .video-tile.self { max-width: 260px; }
 .video-tile figcaption { position: absolute; left: 0; bottom: 0; padding: 2px 8px; background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 13px; }
 .video-off, .video-wait { display: grid; place-items: center; min-height: 140px; height: 100%; color: #d6dcda; }
+
+/* Schedule → patient record click-through and the way back */
+.appt-hit { position: absolute; inset: 0; width: 100%; background: transparent; border: 0; padding: 0; cursor: pointer; }
+.appt-hit:focus-visible { outline: 3px solid var(--fg); outline-offset: -3px; }
+.appt > div { position: relative; pointer-events: none; }
+.appt .pt-link { pointer-events: auto; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.appt .pt-link:hover { text-decoration-thickness: 2px; }
+.appt .pt-link:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+.appt.sel { outline: 3px double var(--fg); outline-offset: 1px; z-index: 2; }
+.back-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; margin-bottom: 10px; background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--r); }
+.back-btn { text-decoration: none; font-size: 15px; }
+.this-appt { font-size: 12px; font-weight: 700; }
