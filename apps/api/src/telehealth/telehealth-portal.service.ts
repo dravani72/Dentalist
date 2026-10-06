@@ -180,7 +180,7 @@ export class TelehealthPortalService {
     return this.tx(actor, async (tx) => {
       const c = await this.lockCase(tx, caseId);
       if (!['intake_pending', 'eligibility_pending', 'ready', 'waiting', 'assigned', 'requested', 'escalated'].includes(c.status)) throw conflict('This visit no longer takes intake answers');
-      const screen = await insertIntake(tx, c, req, { portalId: actor.accountId, source: 'portal' });
+      const screen = await insertIntake(tx, c, req, { portalId: actor.accountId, source: 'patient_portal' });
       await this.telehealth.afterIntake(tx, c, screen, { portalId: actor.accountId }, null);
       // Answers can hold health details, so the audit records only that an intake arrived and its screen result.
       await this.audit.record(tx, actor, { action: 'portal.telehealth.intake', objectType: 'telehealth_case', objectId: caseId, patientId: c.patient_id, details: { screen: screen.result } });

@@ -354,8 +354,8 @@ export class PrescribingService {
       if (!rx) throw notFound('Prescription');
       if (rx.status === 'SENT' || rx.status === 'QUEUED') {
         await tx.query('UPDATE prescription SET status = $2, version = version + 1 WHERE id = $1', [owner.prescription_id, evt.status]);
+        if (evt.status === 'ERROR') await telehealthErxFailureTask(tx, owner.org_id, owner.prescription_id, null);
       }
-      if (evt.status === 'ERROR') await telehealthErxFailureTask(tx, owner.org_id, owner.prescription_id, null);
       await tx.query(
         "INSERT INTO prescription_event (org_id, prescription_id, status, detail, source, partner_event_id, occurred_at) VALUES ($1,$2,$3,$4,'partner_webhook',$5,$6)",
         [owner.org_id, owner.prescription_id, evt.status, evt.detail ?? null, evt.eventId, evt.occurredAt],

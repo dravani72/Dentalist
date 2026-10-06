@@ -23,6 +23,7 @@ import { ClaimsService } from '../billing/claims.service';
 import { DEFAULT_SCOPES, PORTAL_SCOPES } from '@teeth/shared';
 import { MAPLE, RIVERBEND, SYNTHETIC_PASSWORD, createTenant, scriptedActor } from './fixtures';
 import { XrayTooth, syntheticXraySvg } from './synthetic-xray';
+import { publishSyntheticJurisdictions } from '../telehealth/registry';
 
 async function main() {
   const config = loadConfig();
@@ -35,6 +36,8 @@ async function main() {
     return;
   }
   const cipher = new LocalFieldCipher(config.localKeyDir);
+  // Development only: the synthetic test jurisdictions ZZ and ZY (refused in production).
+  await publishSyntheticJurisdictions(owner);
   const maple = await createTenant(owner, cipher, MAPLE);
   const river = await createTenant(owner, cipher, RIVERBEND);
 

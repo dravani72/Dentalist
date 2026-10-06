@@ -78,65 +78,70 @@ const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : (v ?? null));
 
 /**
  * Evidence the signature covers for a telehealth encounter (handoff: the signed version hash
- * includes disposition, consent/location/evaluation references and selected evidence). Before the
- * first signature the references are copied onto the assessment so they lock with it.
+ * includes disposition, consent/location/evaluation references and selected evidence). The
+ * references are chosen at signing and travel inside the signed payload; the integrity check
+ * re-reads exactly those rows and compares them with what was signed.
  */
-export async function telehealthPayload(tx: Tx, encounterId: string, freezeRefs: boolean): Promise<Record<string, unknown> | undefined> {
+export async function telehealthPayload(tx: Tx, encounterId: string): Promise<TelehealthBlock | undefined> {
   const c = await caseForEncounter(tx, encounterId);
   if (!c) return undefined;
-  const a = await tx.one<Record<string, unknown> & { id: string; locked_at: Date | null }>(
+  const a = await tx.one<Record<string, unknown> & { id: string }>(
     `SELECT * FROM telehealth_assessment e WHERE e.encounter_id = $1 AND NOT e.entered_in_error
        AND NOT EXISTS (SELECT 1 FROM telehealth_assessment n WHERE n.supersedes_id = e.id)`,
     [encounterId],
   );
   if (!a) throw invalid('Record the remote assessment and disposition before signing this telehealth visit', { reason: 'assessment_missing' });
-  if (freezeRefs && !a.locked_at) {
-    const session = await tx.one<{ id: string; start_evaluation_id: string | null }>(
-      "SELECT id, start_evaluation_id FROM telehealth_session WHERE case_id = $1 AND start_evaluation_id IS NOT NULL ORDER BY created_at DESC LIMIT 1",
-      [c.id],
-    );
-    const ev = session?.start_evaluation_id
-      ? await tx.one<{ patient_location_id: string | null }>('SELECT patient_location_id FROM eligibility_evaluation WHERE id = $1', [session.start_evaluation_id])
-      : undefined;
-    const consents = await tx.query<{ id: string }>(
+  const session = await tx.one<{ start_evaluation_id: string | null }>(
+    'SELECT start_evaluation_id FROM telehealth_session WHERE case_id = $1 AND start_evaluation_id IS NOT NULL ORDER BY created_at DESC LIMIT 1',
+    [c.id],
+  );
+  const ev = session?.start_evaluation_id
+    ? await tx.one<{ patient_location_id: string | null }>('SELECT patient_location_id FROM eligibility_evaluation WHERE id = $1', [session.start_evaluation_id])
+    : undefined;
+  const ids = async (sql: string, params: unknown[]) => (await tx.query<{ id: string }>(sql, params)).map((r) => r.id);
+  const refs: TelehealthRefs = {
+    locationId: ev?.patient_location_id ?? null,
+    evaluationId: session?.start_evaluation_id ?? null,
+    consentIds: await ids(
       `SELECT s.id FROM consent_signature s JOIN consent_template t ON t.id = s.template_id
         WHERE s.patient_id = $1 AND t.template_key IN ($2, $3) AND s.revoked_at IS NULL ORDER BY s.id`,
       [c.patient_id, TELEHEALTH_CONSENT_KEY, RECORDING_CONSENT_KEY],
-    );
-    const participants = await tx.query<{ id: string }>(
+    ),
+    participantIds: await ids(
       'SELECT p.id FROM telehealth_participant p JOIN telehealth_session s ON s.id = p.session_id WHERE s.case_id = $1 AND p.admitted_at IS NOT NULL ORDER BY p.id',
       [c.id],
-    );
-    await tx.query(
-      `UPDATE telehealth_assessment SET location_confirmation_id = $2, eligibility_evaluation_id = $3, consent_signature_ids = $4, participant_ids = $5 WHERE id = $1`,
-      [a.id, ev?.patient_location_id ?? null, session?.start_evaluation_id ?? null, consents.map((x) => x.id), participants.map((x) => x.id)],
-    );
-    Object.assign(a, await tx.one('SELECT * FROM telehealth_assessment WHERE id = $1', [a.id]));
-  }
-  return buildBlock(tx, c.id, a);
+    ),
+    snapshotIds: await ids('SELECT id FROM media_object WHERE encounter_id = $1 AND source_session_id IS NOT NULL AND NOT entered_in_error ORDER BY id', [encounterId]),
+  };
+  return buildBlock(tx, c.id, a, refs);
 }
 
-async function buildBlock(tx: Tx, caseId: string, a: Record<string, unknown>, snapshotIds?: string[]) {
-  const location = a.location_confirmation_id
-    ? await tx.one('SELECT id, state, stationary, confirmed_by_role, confirmed_at FROM telehealth_location_confirmation WHERE id = $1', [a.location_confirmation_id])
+interface TelehealthRefs {
+  locationId: string | null;
+  evaluationId: string | null;
+  consentIds: string[];
+  participantIds: string[];
+  snapshotIds: string[];
+}
+
+export type TelehealthBlock = Awaited<ReturnType<typeof buildBlock>>;
+
+async function buildBlock(tx: Tx, caseId: string, a: Record<string, unknown>, refs: TelehealthRefs) {
+  const location = refs.locationId
+    ? await tx.one('SELECT id, state, stationary, confirmed_by_role, confirmed_at FROM telehealth_location_confirmation WHERE id = $1', [refs.locationId])
     : undefined;
-  const evaluation = a.eligibility_evaluation_id
-    ? await tx.one('SELECT id, purpose, outcome, reasons, evaluated_at, input_digest, rule_refs, selected_credential_id FROM eligibility_evaluation WHERE id = $1', [a.eligibility_evaluation_id])
+  const evaluation = refs.evaluationId
+    ? await tx.one('SELECT id, purpose, outcome, reasons, evaluated_at, input_digest, rule_refs, selected_credential_id FROM eligibility_evaluation WHERE id = $1', [refs.evaluationId])
     : undefined;
-  const consents = await tx.query('SELECT id, template_id, rendered_sha256, signed_at FROM consent_signature WHERE id = ANY($1) ORDER BY id', [a.consent_signature_ids]);
-  const participants = await tx.query('SELECT id, role, staff_member_id, portal_account_id FROM telehealth_participant WHERE id = ANY($1) ORDER BY id', [a.participant_ids]);
-  const snapshots = snapshotIds
-    ? await tx.query('SELECT id, sha256, frame_captured_at FROM media_object WHERE id = ANY($1) ORDER BY id', [snapshotIds])
-    : await tx.query(
-        'SELECT id, sha256, frame_captured_at FROM media_object WHERE encounter_id = $1 AND source_session_id IS NOT NULL AND NOT entered_in_error ORDER BY id',
-        [a.encounter_id],
-      );
+  const consents = await tx.query('SELECT id, template_id, rendered_sha256, signed_at FROM consent_signature WHERE id = ANY($1) ORDER BY id', [refs.consentIds]);
+  const participants = await tx.query('SELECT id, role, staff_member_id, portal_account_id, display_name, recording_consent FROM telehealth_participant WHERE id = ANY($1) ORDER BY id', [refs.participantIds]);
+  const snapshots = await tx.query('SELECT id, sha256, frame_captured_at FROM media_object WHERE id = ANY($1) ORDER BY id', [refs.snapshotIds]);
   const norm = (rows: Record<string, unknown>[]) => rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, iso(v)])));
   return {
     caseId,
     assessment: canonicalAssessment(a),
-    location: location ? norm([location])[0] : null,
-    evaluation: evaluation ? norm([evaluation])[0] : null,
+    location: location ? norm([location as Record<string, unknown>])[0]! : null,
+    evaluation: evaluation ? norm([evaluation as Record<string, unknown>])[0]! : null,
     consents: norm(consents),
     participants: norm(participants),
     snapshots: norm(snapshots),
@@ -147,17 +152,23 @@ export function canonicalAssessment(a: Record<string, unknown>) {
   const keys = [
     'id', 'supersedes_id', 'assessment_modality', 'disposition', 'urgency', 'rationale', 'limitations', 'evidence_quality', 'recommended_timing',
     'destination', 'instructions', 'patient_understanding', 'return_precautions', 'follow_up_owner_id', 'emergency_handoff',
-    'location_confirmation_id', 'eligibility_evaluation_id', 'consent_signature_ids', 'participant_ids', 'recorded_by', 'recorded_at',
-    'updated_by', 'updated_at', 'version', 'entered_in_error', 'void_reason',
+    'recorded_by', 'recorded_at', 'updated_by', 'updated_at', 'version', 'entered_in_error', 'void_reason',
   ];
   return Object.fromEntries(keys.map((k) => [k, iso(a[k])]));
 }
 
 /** Integrity re-check of a signed version's telehealth block against the rows it cites. */
-export async function verifyTelehealthBlock(tx: Tx, block: { caseId: string; assessment: { id: string }; snapshots: { id: string }[] }): Promise<boolean> {
+export async function verifyTelehealthBlock(tx: Tx, block: TelehealthBlock): Promise<boolean> {
   const a = await tx.one<Record<string, unknown>>('SELECT * FROM telehealth_assessment WHERE id = $1', [block.assessment.id]);
   if (!a) return false;
-  const rebuilt = await buildBlock(tx, block.caseId, a, block.snapshots.map((s) => s.id));
+  const id = (r: Record<string, unknown> | null) => (r ? (r.id as string) : null);
+  const rebuilt = await buildBlock(tx, block.caseId, a, {
+    locationId: id(block.location),
+    evaluationId: id(block.evaluation),
+    consentIds: block.consents.map((x) => x.id as string),
+    participantIds: block.participants.map((x) => x.id as string),
+    snapshotIds: block.snapshots.map((x) => x.id as string),
+  });
   return canonicalJson(rebuilt) === canonicalJson(block);
 }
 

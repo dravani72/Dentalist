@@ -7,7 +7,7 @@ import type { Actor } from '../auth/actor';
 import { RECORD_SIGNER, RecordSigner, sha256Hex } from '../crypto/keys';
 import { conflict, invalid, notFound } from '../common/errors';
 import { ChartService, EncounterRow, effectiveWhere, entrySelect } from './chart.service';
-import { afterTelehealthSign, telehealthAuthority, telehealthPayload, verifyTelehealthBlock } from '../telehealth/hooks';
+import { afterTelehealthSign, telehealthAuthority, telehealthPayload, verifyTelehealthBlock, type TelehealthBlock } from '../telehealth/hooks';
 import { ENTRY_KINDS, EntryKind, canonicalEntry } from './entry-kinds';
 
 const PAYLOAD_KINDS: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'anesthetic', 'material', 'note', 'media'];
@@ -212,7 +212,7 @@ export class SigningService {
       if (sha256Hex(v.canonical_payload) !== v.content_hash) issues.push(`v${v.version_no}: stored payload does not match its hash`);
       if (v.key_id !== this.signer.keyId) issues.push(`v${v.version_no}: signed with key ${v.key_id}, cannot verify with ${this.signer.keyId}`);
       else if (!(await this.signer.verify(v.content_hash, v.signature))) issues.push(`v${v.version_no}: signature invalid`);
-      const payload = JSON.parse(v.canonical_payload) as { entries: Record<string, Record<string, unknown>[]>; telehealth?: Parameters<typeof verifyTelehealthBlock>[1] };
+      const payload = JSON.parse(v.canonical_payload) as { entries: Record<string, Record<string, unknown>[]>; telehealth?: TelehealthBlock };
       if (payload.telehealth && !(await verifyTelehealthBlock(tx, payload.telehealth))) issues.push(`v${v.version_no}: telehealth assessment or its evidence differs from what was signed`);
       for (const kind of PAYLOAD_KINDS) {
         for (const entry of payload.entries[kind] ?? []) {
@@ -240,7 +240,7 @@ export class SigningService {
   }
 
   private async buildPayload(tx: Tx, e: EncounterRow, versionNo: number, amendment: { id: string; reason: string } | null) {
-    const telehealth = await telehealthPayload(tx, e.id, true);
+    const telehealth = await telehealthPayload(tx, e.id);
     const entries: Record<string, unknown[]> = {};
     for (const kind of PAYLOAD_KINDS) {
       const rows = await tx.query(entrySelect(kind, effectiveWhere(kind)) + ' ORDER BY e.id', [e.id]);

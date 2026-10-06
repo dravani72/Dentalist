@@ -11,6 +11,8 @@ import { FakeErxPartner } from '../src/prescribing/fake-erx-partner';
 import { LogOnlyMessageSender } from '../src/outbox/outbox.worker';
 import { FakeClearinghouse } from '../src/billing/fake-clearinghouse';
 import { MAPLE, RIVERBEND, SYNTHETIC_PASSWORD, Tenant, createTenant } from '../src/scripts/fixtures';
+import { publishSyntheticJurisdictions } from '../src/telehealth/registry';
+import { FakeRtcAdapter } from '../src/telehealth/rtc-adapter';
 
 export const TEST_DB = process.env.TEST_DATABASE_URL ?? 'postgres://teeth_app:teeth_app_dev@localhost:5432/teeth_test';
 export const TEST_OWNER_DB = process.env.TEST_DATABASE_OWNER_URL ?? 'postgres://teeth_owner:teeth_owner_dev@localhost:5432/teeth_test';
@@ -24,6 +26,7 @@ export interface World {
   partner: FakeErxPartner;
   sender: LogOnlyMessageSender;
   clearinghouse: FakeClearinghouse;
+  rtc: FakeRtcAdapter;
   login(t: Tenant, key: string): Promise<Session>;
   /**
    * A never-used authenticator code for an account. Codes work once, so the app under test gives
@@ -53,12 +56,14 @@ export async function setupWorld(): Promise<World> {
   const owner = new Client({ connectionString: TEST_OWNER_DB });
   await owner.connect();
   const cipher = new LocalFieldCipher(config.localKeyDir);
+  await publishSyntheticJurisdictions(owner);
   const maple = await createTenant(owner, cipher, MAPLE);
   const river = await createTenant(owner, cipher, RIVERBEND);
   const partner = new FakeErxPartner();
   partner.callbackDelayMs = 10;
   const sender = new LogOnlyMessageSender();
   const clearinghouse = new FakeClearinghouse();
+  const rtc = new FakeRtcAdapter();
   const totpOffsets = new Map<string, number>();
   const totpClock = (userId: string) => Date.now() + (totpOffsets.get(userId) ?? 0);
   const currentTotp = (userId: string, secret: string) => totpCode(secret, totpClock(userId));
@@ -72,6 +77,7 @@ export async function setupWorld(): Promise<World> {
     erxPartner: partner,
     messageSender: sender,
     clearinghouse,
+    rtcAdapter: rtc,
   });
   await app.init();
   const http = request(app.getHttpServer());
@@ -102,6 +108,7 @@ export async function setupWorld(): Promise<World> {
     partner,
     sender,
     clearinghouse,
+    rtc,
     login,
     nextTotp,
     currentTotp,

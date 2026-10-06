@@ -367,11 +367,8 @@ CREATE TABLE telehealth_assessment (
   return_precautions     text NOT NULL,
   follow_up_owner_id     uuid,
   emergency_handoff      text,
-  -- Evidence references frozen at signing (handoff: signed hash includes consent/location/evaluation).
-  location_confirmation_id uuid,
-  eligibility_evaluation_id uuid,
-  consent_signature_ids  uuid[] NOT NULL DEFAULT '{}',
-  participant_ids        uuid[] NOT NULL DEFAULT '{}',
+  -- The consent, location, eligibility and participant references the dentist attests to are
+  -- written into the signed encounter version (payload.telehealth), not onto this row.
   recorded_by            uuid NOT NULL,
   recorded_at            timestamptz NOT NULL DEFAULT now(),
   updated_by             uuid,
