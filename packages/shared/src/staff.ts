@@ -77,6 +77,13 @@ export const PRIVILEGE_GROUPS: { label: string; privileges: { key: Privilege; la
     ],
   },
   {
+    label: 'Telehealth',
+    privileges: [
+      { key: 'telehealth.coordinate', label: 'Run the telehealth waiting room and follow-up list' },
+      { key: 'telehealth.consult', label: 'Hold telehealth consultations (each visit is checked against the patient’s state)' },
+    ],
+  },
+  {
     label: 'Administration and compliance',
     privileges: [
       { key: 'admin.staff', label: 'Manage staff, privileges and hours' },

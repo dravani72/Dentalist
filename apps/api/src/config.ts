@@ -9,6 +9,8 @@ export interface AppConfig {
   localKeyDir: string;
   localMediaDir: string;
   erxWebhookSecret: string;
+  /** Shared secret the media server signs its webhook calls with. */
+  rtcWebhookSecret: string;
   sessionIdleMinutes: number;
   sessionAbsoluteHours: number;
   breakGlassMinutes: number;
@@ -26,6 +28,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     localKeyDir: path.resolve(root, env.LOCAL_KEY_DIR ?? 'var/keys'),
     localMediaDir: path.resolve(root, env.LOCAL_MEDIA_DIR ?? 'var/media'),
     erxWebhookSecret: env.ERX_WEBHOOK_SECRET ?? 'dev-webhook-secret',
+    rtcWebhookSecret: env.RTC_WEBHOOK_SECRET ?? 'dev-rtc-webhook-secret',
     sessionIdleMinutes: Number(env.SESSION_IDLE_MINUTES ?? 15),
     sessionAbsoluteHours: Number(env.SESSION_ABSOLUTE_HOURS ?? 12),
     breakGlassMinutes: Number(env.BREAK_GLASS_MINUTES ?? 60),

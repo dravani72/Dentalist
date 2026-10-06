@@ -7,6 +7,7 @@ import path from 'node:path';
 import { Client } from 'pg';
 import { DENTAL_POSITIONS } from '@teeth/shared';
 import { loadConfig } from '../config';
+import { loadJurisdictionRegistry } from '../telehealth/registry';
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../../../db/migrations');
 
@@ -47,6 +48,8 @@ export async function migrate(opts: { reset?: boolean; ownerUrl?: string; quiet?
       );
     }
     log(`reference data: ${DENTAL_POSITIONS.length} dental positions`);
+    const jurisdictions = await loadJurisdictionRegistry(client);
+    log(`reference data: ${jurisdictions} telehealth jurisdiction slots (all disabled until reviewed)`);
   } finally {
     await client.end();
   }

@@ -122,6 +122,11 @@ export const FindingRequest = toothRef.extend({
   surfaces: z.array(z.enum(SURFACES)).default([]),
   certainty: z.enum(CERTAINTIES),
   note: note,
+  /** Telehealth (TH-005): how the finding was observed. Remote findings must state their limits. */
+  assessmentModality: z.enum(['in_person', 'synchronous_video', 'asynchronous_photo', 'audio_only']).optional(),
+  sourceMediaId: uuid.optional(),
+  remoteExamLimitations: z.string().trim().max(1000).optional(),
+  evidenceQuality: z.enum(['adequate', 'limited', 'poor', 'not_assessable']).optional(),
 });
 export type FindingRequest = z.infer<typeof FindingRequest>;
 

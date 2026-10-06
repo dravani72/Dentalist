@@ -46,6 +46,10 @@ export const PRIVILEGES = [
   'portal.respond',
   /** Create consent form versions and send them to patients. */
   'consent.manage',
+  /** Telehealth waiting room: see the virtual queue, assign cases, contact patients, record no-shows. */
+  'telehealth.coordinate',
+  /** Run telehealth consultations (each visit still needs a passing jurisdiction evaluation). */
+  'telehealth.consult',
 ] as const;
 
 export type Privilege = (typeof PRIVILEGES)[number];
@@ -102,6 +106,7 @@ export const ROLE_TEMPLATES: Record<RoleTemplate, readonly Privilege[]> = {
     'billing.read',
     'payment.post',
     'insurance.manage',
+    'telehealth.coordinate',
   ],
   dental_assistant: [
     'patient.read',
@@ -148,6 +153,8 @@ export const ROLE_TEMPLATES: Record<RoleTemplate, readonly Privilege[]> = {
     'portal.respond',
     'consent.manage',
     'billing.read',
+    'telehealth.coordinate',
+    'telehealth.consult',
   ],
   billing: [
     'patient.read',
