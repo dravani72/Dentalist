@@ -9,6 +9,7 @@ import { conflict, invalid, notFound } from '../common/errors';
 import { ChartService, EncounterRow, effectiveWhere, entrySelect } from './chart.service';
 import { afterTelehealthSign, telehealthAuthority, telehealthPayload, verifyTelehealthBlock, type TelehealthBlock } from '../telehealth/hooks';
 import { ENTRY_KINDS, EntryKind, canonicalEntry } from './entry-kinds';
+import { restartRecallFromVisit } from '../scheduling/recall';
 
 const PAYLOAD_KINDS: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'anesthetic', 'material', 'note', 'media'];
 const LOCK_TABLES = ['telehealth_assessment', 'clinical_finding', 'existing_restoration', 'diagnosis', 'planned_procedure', 'procedure_occurrence', 'procedure_material', 'anesthetic_event', 'encounter_note', 'media_object'];
@@ -167,6 +168,8 @@ export class SigningService {
         JSON.stringify({ encounterId: id }),
         `billing.post_charges:${id}:${versionNo}`,
       ]);
+      // A signed cleaning or periodic exam starts the next hygiene recall.
+      await restartRecallFromVisit(tx, this.audit, actor, id);
       await this.audit.record(tx, actor, {
         action: amendment ? 'encounter.amendment_signed' : 'encounter.sign',
         objectType: 'encounter',

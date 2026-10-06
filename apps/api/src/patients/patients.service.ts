@@ -1,11 +1,18 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { AllergyRequest, ConditionRequest, CreatePatientRequest, MedicationStatementRequest } from '@teeth/shared';
+import { AllergyRequest, ConditionRequest, CreatePatientRequest, MedicationStatementRequest, PatientListQuery } from '@teeth/shared';
 import { z } from 'zod';
 import { DbService, Tx } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { AccessService } from '../auth/access.service';
 import type { Actor } from '../auth/actor';
 import { conflict, notFound } from '../common/errors';
+import { OPEN_CLAIM } from '../billing/ledger';
+
+/** Plan items still to be done: counted as part of the patient's active cycle of care. */
+const OPEN_TREATMENT = ['PROPOSED', 'PLANNED', 'PATIENT_ACCEPTED', 'SCHEDULED'];
+/** Plan items the patient has agreed to (or the dentist planned) that have no appointment yet. */
+const UNSCHEDULED_TREATMENT = ['PLANNED', 'PATIENT_ACCEPTED'];
+export const PATIENT_LIST_LIMIT = 200;
 
 type HistoryKind = 'allergy' | 'medication_statement' | 'medical_condition';
 const HISTORY_COLUMNS: Record<HistoryKind, string[]> = {
@@ -57,22 +64,86 @@ export class PatientsService {
     });
   }
 
-  /** Search within the actor's locations. Results are audited as a search, not as chart opens. */
-  async search(actor: Actor, q: string) {
+  /**
+   * Search and filter within the actor's locations. Results are audited as a search (with the
+   * filters used, never the search text), not as chart opens.
+   */
+  async search(actor: Actor, query: PatientListQuery) {
     await this.access.require(actor, 'patient.read', { action: 'patient.search' });
+    // A balance is billing information: filtering on it needs the billing privilege, and the
+    // amount is only returned to staff who hold it.
+    if (query.balance) await this.access.require(actor, 'billing.read', { action: 'patient.search' });
+    const showBalance = actor.privileges.has('billing.read');
     return this.db.tx(this.scope(actor), async (tx) => {
-      const term = q.trim();
+      const params: unknown[] = [actor.locationIds, query.q, OPEN_TREATMENT, UNSCHEDULED_TREATMENT, OPEN_CLAIM];
+      const p = (v: unknown) => '$' + params.push(v);
+      const where: string[] = [];
+      if (query.recall === 'active') where.push('(recall_due IS NOT NULL OR open_treatment > 0)');
+      if (query.recall === 'overdue') where.push('recall_due < today');
+      if (query.recall === 'due_30') where.push("recall_due BETWEEN today AND today + 30");
+      if (query.appointment === 'booked') where.push('next_appointment_at IS NOT NULL');
+      if (query.appointment === 'none') where.push('next_appointment_at IS NULL');
+      if (query.treatment === 'open') where.push('open_treatment > 0');
+      if (query.treatment === 'unscheduled') where.push('unscheduled_treatment > 0');
+      if (query.age === 'child') where.push('age < 18');
+      if (query.age === 'adult') where.push('age BETWEEN 18 AND 64');
+      if (query.age === 'senior') where.push('age >= 65');
+      if (query.balance === 'owes') where.push('patient_due_cents > 0');
+      if (query.providerId) {
+        // Seen by (performed work) or booked with this provider, cancelled bookings aside.
+        const id = p(query.providerId);
+        where.push(`(EXISTS (SELECT 1 FROM appointment a JOIN appointment_resource ar ON ar.appointment_id = a.id
+                              WHERE a.patient_id = f.id AND a.status <> 'cancelled' AND ar.resource_kind = 'provider' AND ar.resource_id = ${id})
+                  OR EXISTS (SELECT 1 FROM procedure_occurrence po
+                              WHERE po.patient_id = f.id AND NOT po.entered_in_error AND ${id} = ANY(po.performed_by)))`);
+      }
+      const recallOrder = query.recall && query.recall !== 'active' ? 'recall_due, ' : query.recall ? 'recall_due NULLS LAST, ' : '';
       const rows = await tx.query(
-        `SELECT id, chart_number, legal_given_name, legal_family_name, preferred_name, date_of_birth, home_location_id
-           FROM patient
-          WHERE home_location_id = ANY($1)
-            AND ($2 = '' OR chart_number = upper($2)
-                 OR lower(legal_family_name) LIKE lower($2) || '%'
-                 OR lower(legal_given_name || ' ' || legal_family_name) LIKE '%' || lower($2) || '%')
-          ORDER BY legal_family_name, legal_given_name LIMIT 50`,
-        [actor.locationIds, term],
+        `WITH f AS (
+           SELECT p.id, p.chart_number, p.legal_given_name, p.legal_family_name, p.preferred_name, p.date_of_birth, p.home_location_id,
+                  (now() AT TIME ZONE l.time_zone)::date AS today,
+                  date_part('year', age((now() AT TIME ZONE l.time_zone)::date, p.date_of_birth))::int AS age,
+                  r.due_date AS recall_due, r.recall_type, r.interval_months AS recall_interval_months,
+                  na.start_at AS next_appointment_at,
+                  lv.last_visit_at,
+                  coalesce(tp.open_treatment, 0)::int AS open_treatment,
+                  coalesce(tp.unscheduled_treatment, 0)::int AS unscheduled_treatment,
+                  (bal.balance - least(bal.pending, greatest(bal.balance, 0)))::int AS patient_due_cents
+             FROM patient p
+             JOIN location l ON l.id = p.home_location_id
+             LEFT JOIN LATERAL (
+               SELECT due_date, recall_type, interval_months FROM recall
+                WHERE patient_id = p.id AND status IN ('due', 'scheduled') ORDER BY due_date LIMIT 1) r ON true
+             LEFT JOIN LATERAL (
+               SELECT start_at FROM appointment
+                WHERE patient_id = p.id AND start_at >= now() AND status IN ('scheduled', 'confirmed', 'checked_in', 'in_chair')
+                ORDER BY start_at LIMIT 1) na ON true
+             LEFT JOIN LATERAL (
+               SELECT max(opened_at) AS last_visit_at FROM encounter WHERE patient_id = p.id AND status IN ('SIGNED', 'AMENDING')) lv ON true
+             LEFT JOIN LATERAL (
+               SELECT count(*) FILTER (WHERE pp.status = ANY($3)) AS open_treatment,
+                      count(*) FILTER (WHERE pp.status = ANY($4)) AS unscheduled_treatment
+                 FROM planned_procedure pp
+                WHERE pp.patient_id = p.id AND NOT pp.entered_in_error
+                  AND NOT EXISTS (SELECT 1 FROM planned_procedure n WHERE n.supersedes_id = pp.id)) tp ON true
+             LEFT JOIN LATERAL (
+               SELECT coalesce((SELECT sum(amount_cents) FROM ledger_entry WHERE patient_id = p.id), 0) AS balance,
+                      coalesce((SELECT sum(cl.est_insurance_cents) FROM claim_line cl JOIN claim c ON c.id = cl.claim_id
+                                 WHERE c.patient_id = p.id AND c.status = ANY($5) AND cl.adjudication IS NULL), 0) AS pending) bal ON true
+            WHERE p.home_location_id = ANY($1)
+              AND ($2 = '' OR p.chart_number = upper($2)
+                   OR lower(p.legal_family_name) LIKE lower($2) || '%'
+                   OR lower(p.legal_given_name || ' ' || p.legal_family_name) LIKE '%' || lower($2) || '%')
+         )
+         SELECT id, chart_number, legal_given_name, legal_family_name, preferred_name, date_of_birth, home_location_id,
+                recall_due, recall_type, recall_interval_months, next_appointment_at, last_visit_at, open_treatment, unscheduled_treatment
+                ${showBalance ? ', patient_due_cents' : ''}
+           FROM f ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+          ORDER BY ${recallOrder}legal_family_name, legal_given_name LIMIT ${PATIENT_LIST_LIMIT}`,
+        params,
       );
-      await this.audit.record(tx, actor, { action: 'patient.search', details: { resultCount: rows.length } });
+      const filters = Object.fromEntries(Object.entries(query).filter(([k, v]) => k !== 'q' && v !== undefined));
+      await this.audit.record(tx, actor, { action: 'patient.search', details: { resultCount: rows.length, filters } });
       return rows;
     });
   }

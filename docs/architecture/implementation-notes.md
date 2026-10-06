@@ -23,6 +23,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Patient portal, delegated access, secure messaging, consents | 0006; `apps/api/src/portal/*`; `apps/web/src/pages/portal/*`, `PortalAccessTab.tsx`, `PortalInbox.tsx`; details in `patient-portal.md` |
 | Revenue cycle: fees, ledger, insurance, estimates, claims, remittance | 0007; `apps/api/src/billing/*` (`ClearinghousePartner`, `FakeClearinghouse`); `packages/shared/src/billing.ts`; `apps/web/src/pages/billing/*`, portal `billing.tsx`; details in `revenue-cycle.md` |
 | Practice setup: staff, privileges, licenses, provider hours, first sign-in | 0008; `apps/api/src/admin/*`, `src/scheduling/availability.ts`; `packages/shared/src/staff.ts`; `apps/web/src/pages/admin/*`, `AccountSetup.tsx`; details in `practice-setup.md` |
+| Patients tab filters and recall | `apps/api/src/patients/patients.service.ts` `search()`, `src/scheduling/recall.ts`; `PatientListQuery` in `packages/shared/src/schemas.ts`; `apps/web/src/pages/Patients.tsx`. See "Patient filters and recall" below |
 | Telehealth triage: cases, intake, jurisdiction eligibility, sessions, remote findings, signing evidence | 0009; `apps/api/src/telehealth/*` (`RtcAdapter`, `FakeRtcAdapter`); `packages/shared/src/telehealth.ts`; `config/jurisdiction_registry.json`; `apps/web/src/pages/telehealth/*`, portal `telehealth.tsx`; details in `telehealth.md` |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
@@ -54,6 +55,24 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 - The outbox worker's polling timer let a failed poll (for example during a database reset) crash the API with an
   unhandled rejection. Failed polls are now logged and retried on the next tick.
 - DATE columns are returned as `YYYY-MM-DD` strings, so a date of birth can never shift by a day across time zones.
+
+## Patient filters and recall
+
+The Patients tab filters by recall, next appointment, treatment plan, provider, age group and balance; filters
+combine with each other and with the search box, and work without a search term (first 200 rows).
+
+- **In recall** (the active cycle of care) means an open recall (`due` or `scheduled`) with a due date, or treatment
+  that is still to be done (plan items `PROPOSED`, `PLANNED`, `PATIENT_ACCEPTED`, `SCHEDULED`). **Overdue** and
+  **Due in the next 30 days** look only at the recall due date, in the home location's time zone.
+- **Recall is restarted by signing.** When a visit that includes a signed prophylaxis or periodic exam is signed, the
+  open hygiene recall is marked `completed` and a new one is due one interval after the visit date (the patient's
+  existing interval, else `DEFAULT_RECALL_MONTHS` = 6). Audited as `recall.create` with `source: encounter.sign`.
+  Re-signing an amended visit does not move it. `POST /recalls` still sets one by hand.
+- **Provider** means booked with (any non-cancelled appointment) or performed work for the patient.
+- **Balance** filters on the estimated patient share (ledger balance minus insurance still expected). It needs
+  `billing.read`; staff without it get 403 for the filter and no amount column.
+- The search is audited as `patient.search` with the filters used; the search text is never written to the audit.
+- There is no inactive/deceased patient status yet, so every patient with an open recall counts as current.
 
 ## Not built yet
 

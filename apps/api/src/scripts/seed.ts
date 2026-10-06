@@ -218,6 +218,11 @@ async function main() {
   await chart.procedureStatus(jane, p30!.id, 'PERFORMED');
   await signing.transition(jane, todayId, 'READY_FOR_REVIEW');
   await scheduling.addRecall(frank, { patientId: jordan.id, recallType: 'hygiene', intervalMonths: 6, lastVisitDate: '2023-08-22' });
+  // Recall states for the Patients tab's Recall filter: overdue, due soon and due later.
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  await scheduling.addRecall(frank, { patientId: others[0]!.id, recallType: 'hygiene', intervalMonths: 6, lastVisitDate: daysAgo(215) });
+  await scheduling.addRecall(frank, { patientId: others[1]!.id, recallType: 'hygiene', intervalMonths: 6, lastVisitDate: daysAgo(170) });
+  await scheduling.addRecall(frank, { patientId: others[2]!.id, recallType: 'hygiene', intervalMonths: 6, lastVisitDate: daysAgo(60) });
 
   // ---------------------------------------------------------------- patient portal
   // Jordan uses the portal for themself; Lena (12) is reached through her parent's account.

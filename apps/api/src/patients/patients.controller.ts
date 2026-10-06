@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Inject } from '@nestjs/common';
-import { CreatePatientRequest } from '@teeth/shared';
+import { CreatePatientRequest, PatientListQuery } from '@teeth/shared';
 import { z } from 'zod';
 import { body } from '../common/http';
 import { invalid } from '../common/errors';
@@ -27,9 +27,11 @@ export class PatientsController {
     return this.patients.create(actor, req);
   }
 
+  /** Search and filters. Empty query values mean "any" so the client can send a fixed set. */
   @Get()
-  search(@CurrentActor() actor: Actor, @Query('q') q = '') {
-    return this.patients.search(actor, q);
+  search(@CurrentActor() actor: Actor, @Query() raw: Record<string, unknown>) {
+    const present = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== ''));
+    return this.patients.search(actor, body(PatientListQuery).transform(present) as PatientListQuery);
   }
 
   @Get(':id')
