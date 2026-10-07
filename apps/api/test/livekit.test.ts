@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AccessToken, TokenVerifier } from 'livekit-server-sdk';
-import { LiveKitRtcAdapter } from '../src/telehealth/livekit-adapter';
+import { LiveKitRtcAdapter, assertSelfHosted } from '../src/telehealth/livekit-adapter';
 import { setupWorld, type World } from './helpers';
 
 /* The LiveKit adapter without a server: what goes into join tokens and what comes out of webhooks. */
@@ -65,6 +65,15 @@ describe('LiveKit webhooks', () => {
     const forged = await signed(joined, 'some-other-secret-that-is-long-enough!!');
     await expect(adapter.receiveWebhook(forged.raw, forged.auth)).rejects.toMatchObject({ status: 401 });
     await expect(adapter.receiveWebhook(raw.replace('participant_joined', 'participant_left'), auth)).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+describe('LiveKit hosting', () => {
+  it('runs only self-hosted: LiveKit Cloud addresses are refused', () => {
+    expect(() => new LiveKitRtcAdapter({ ...cfg, url: 'wss://practice-abc123.livekit.cloud' })).toThrow(/self-hosted/);
+    expect(() => assertSelfHosted({ url: 'wss://sfu.example.test', apiUrl: 'https://PRACTICE.LIVEKIT.CLOUD' })).toThrow(/self-hosted/);
+    expect(() => assertSelfHosted({ url: 'wss://livekit.cloud.example.test', apiUrl: 'http://localhost:7880' })).not.toThrow();
+    expect(() => assertSelfHosted({ url: 'not a url', apiUrl: 'http://localhost:7880' })).toThrow(/valid URLs/);
   });
 });
 
