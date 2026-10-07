@@ -17,6 +17,7 @@ import {
 import { ChartPatterns, LAYER_LABEL, LETTER, Legend, Odontogram, type Layer } from '../components/Odontogram';
 import { Xray } from '../components/Xray';
 import { api, errorText } from '../lib/api';
+import { EndoLine } from './EndoTab';
 import { OPEN_PLAN, itemsFor, marksFor, type ChartItem, type EntryKind } from '../lib/chart-model';
 import { conceptLabel, fmtDate, fmtStamp, humanize } from '../lib/format';
 import { useSession } from '../lib/session';
@@ -34,6 +35,9 @@ const ROUTE: Record<EntryKind, string> = {
   material: 'materials',
   media: 'media',
   perio: 'perio-exams',
+  endo_dx: 'endo-diagnoses',
+  endo_test: 'endo-tests',
+  endo_canal: 'endo-canals',
 };
 
 /** The schedule appointment a record was opened from; its visit layer is shown first. */
@@ -686,6 +690,7 @@ function VisitLedger({ visit, staffName, onChanged }: { visit: Visit; staffName(
         </table>
       </div>
       <PerioLine visit={visit} />
+      <EndoLine visit={visit} />
       <Diagnoses visit={visit} writable={writable && can('diagnosis.create')} onChanged={onChanged} />
       {act.error && <div className="err">{errorText(act.error)}</div>}
       <div className="row">
@@ -822,6 +827,12 @@ function SignModal({ visit, onClose, onSigned }: { visit: Visit; onClose(): void
           <>
             <h2>Periodontal exam</h2>
             <PerioLine visit={visit} />
+          </>
+        )}
+        {(['endo_dx', 'endo_test', 'endo_canal'] as const).some((k) => visit.entries[k].some((e) => !e.entered_in_error)) && (
+          <>
+            <h2>Endodontics</h2>
+            <EndoLine visit={visit} />
           </>
         )}
         <label className="row" style={{ alignItems: 'flex-start' }}>

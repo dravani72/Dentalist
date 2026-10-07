@@ -11,3 +11,4 @@ export * from './billing';
 export * from './staff';
 export * from './telehealth';
 export * from './perio';
+export * from './endo';

@@ -15,6 +15,7 @@ import { SchedulingService } from '../scheduling/scheduling.service';
 import { ChartService } from '../charting/chart.service';
 import { SigningService } from '../charting/signing.service';
 import { PerioService } from '../charting/perio.service';
+import { EndoService } from '../charting/endo.service';
 import { MediaService } from '../media/media.service';
 import { PrescribingService } from '../prescribing/prescribing.service';
 import { PortalStaffService } from '../portal/portal-staff.service';
@@ -49,6 +50,7 @@ async function main() {
   const chart = app.get(ChartService);
   const signing = app.get(SigningService);
   const perio = app.get(PerioService);
+  const endo = app.get(EndoService);
   const media = app.get(MediaService);
   const rx = app.get(PrescribingService);
   const portalStaff = app.get(PortalStaffService);
@@ -92,7 +94,7 @@ async function main() {
     });
     await record(id);
     // Backdate the visit while it is still a draft (synthetic history only).
-    for (const t of ['clinical_finding', 'existing_restoration', 'planned_procedure', 'procedure_occurrence', 'anesthetic_event', 'encounter_note', 'media_object']) {
+    for (const t of ['clinical_finding', 'existing_restoration', 'planned_procedure', 'procedure_occurrence', 'anesthetic_event', 'encounter_note', 'media_object', 'endo_diagnosis', 'endo_test', 'endo_canal']) {
       await owner.query(`UPDATE ${t} SET recorded_at = $2::date + time '14:30' WHERE encounter_id = $1`, [id, date]);
     }
     await owner.query(
@@ -132,6 +134,27 @@ async function main() {
       details: { isolation: 'rubber dam', canals: 'MB, ML, D', obturation: 'Gutta-percha, warm vertical' },
       anesthetics: [{ drug: 'Articaine', concentration: '4%', vasoconstrictor: '1:100,000 epinephrine', amountMl: 1.7, route: 'Inferior alveolar nerve block', administeredAt: '2021-02-03T14:20:00Z', administeredBy: amy.staffId }],
     });
+    // Endodontic workup and canals, with #20 as the control tooth.
+    const test = (tooth: string, t: 'cold' | 'percussion' | 'palpation' | 'ept', result: string, extra: { eptReading?: number; lingeringSeconds?: number; isControl?: boolean } = {}) =>
+      endo.recordTest(jane, id, { tooth, test: t, result, eptReading: extra.eptReading ?? null, lingeringSeconds: extra.lingeringSeconds ?? null, isControl: extra.isControl ?? false });
+    await test('20', 'cold', 'normal', { isControl: true });
+    await test('19', 'cold', 'exaggerated_lingering', { lingeringSeconds: 35 });
+    await test('20', 'percussion', 'not_tender', { isControl: true });
+    await test('19', 'percussion', 'very_tender');
+    await test('19', 'palpation', 'tender');
+    await test('19', 'ept', 'responsive', { eptReading: 22 });
+    await endo.recordDiagnosis(amy, id, {
+      tooth: '19', pulpalDiagnosis: 'symptomatic_irreversible_pulpitis', apicalDiagnosis: 'symptomatic_apical_periodontitis',
+      symptoms: ['spontaneous_pain', 'lingering_cold_pain', 'pain_on_biting'], note: 'Apical radiolucency on the distal root.',
+    });
+    const fill = { status: 'obturated' as const, referencePoint: 'MB cusp', instrumentationSystem: 'rotary NiTi', obturationTechnique: 'warm vertical', obturationMaterial: 'gutta-percha', sealer: 'epoxy resin' };
+    for (const c of [
+      { canal: 'MB' as const, workingLengthMm: 20.5, apexLocatorReading: '0.0', masterApicalSize: 30, taper: 0.06 },
+      { canal: 'ML' as const, workingLengthMm: 20, apexLocatorReading: '0.0', masterApicalSize: 30, taper: 0.06 },
+      { canal: 'D' as const, workingLengthMm: 21.5, apexLocatorReading: '0.5', masterApicalSize: 40, taper: 0.04, referencePoint: 'DB cusp' },
+    ]) {
+      await endo.recordCanal(amy, id, { procedureId: p!.id, ...fill, ...c });
+    }
     await chart.procedureStatus(amy, p!.id, 'PERFORMED');
     const plan = await chart.addPlanned(amy, id, { tooth: '19', surfaces: [], procedureConcept: 'crown_ceramic', status: 'PATIENT_ACCEPTED', phase: 1, priority: 'high', findingIds: [], diagnosisIds: [] });
     crown19 = plan!.id;

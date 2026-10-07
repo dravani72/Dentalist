@@ -99,6 +99,13 @@ open, so **Start perio exam**, click the first cell (tooth 2, distobuccal depth)
 moves to the next site. The 2023 exam is picked for comparison automatically. As amy.jones, the exam appears in
 **Review and sign** with the rest of the visit.
 
+### Endo charting
+
+As amy.jones, open **Jordan Rivera → Endo**. Tooth #19 shows the signed 2021 workup: tests with #20 as the control
+(abnormal results marked ⚠), the diagnosis, and three obturated canals with a working-length diagram. Choose another
+tooth (say #3), add tests and a diagnosis, **Start root canal**, then add canals. **Mark root canal performed** is refused
+until every canal is obturated, calcified or not located.
+
 ### Billing
 
 Codes and fees are an invented **SYNTHETIC** set (`SYN-…`, `apps/api/src/billing/synthetic-codes.ts`); the seed loads
@@ -134,7 +141,9 @@ and telehealth (`test/telehealth.test.ts` and `test/telehealth-policy.test.ts`: 
 room-scoped tokens, consent-gated audio-only recording, holds on location, consent or license change, signed evidence,
 no-show closure, webhook replay, telehealth prescribing) and perio charting (`test/perio.test.ts`: per-tooth saves
 and version locks, furcation and range checks, front desk and other-practice refusals, database guards, signing,
-amendment by superseding the exam, integrity).
+amendment by superseding the exam, integrity) and endo charting (`test/endo.test.ts`: test and result rules,
+dentist-only diagnosis, canals tied to a root canal in the same visit, the completion rule, front desk and
+other-practice refusals, database guards, signing, amendment, integrity).
 
 ## Layout
 

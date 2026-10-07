@@ -74,6 +74,41 @@ export interface EntrySet {
   material: Entry[];
   media: Entry[];
   perio: PerioExamEntry[];
+  endo_dx: EndoDiagnosisEntry[];
+  endo_test: EndoTestEntry[];
+  endo_canal: EndoCanalEntry[];
+}
+
+/** Pulpal and apical diagnosis of one tooth (AAE terminology, our own keys). */
+export interface EndoDiagnosisEntry extends Entry {
+  pulpal_diagnosis: string;
+  apical_diagnosis: string;
+  symptoms: string[];
+}
+
+/** One pulp or periapical test on one tooth. */
+export interface EndoTestEntry extends Entry {
+  test: string;
+  result: string;
+  ept_reading: number | null;
+  lingering_seconds: number | null;
+  is_control: boolean;
+}
+
+/** One canal of a root canal procedure. Numeric columns arrive as text from Postgres. */
+export interface EndoCanalEntry extends Entry {
+  procedure_occurrence_id: string;
+  canal: string;
+  status: string;
+  reference_point: string | null;
+  working_length_mm: string | null;
+  apex_locator_reading: string | null;
+  master_apical_size: number | null;
+  taper: string | null;
+  instrumentation_system: string | null;
+  obturation_technique: string | null;
+  obturation_material: string | null;
+  sealer: string | null;
 }
 
 /** A perio exam with its measurements (read with the exam, attested with it). */

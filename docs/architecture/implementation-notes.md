@@ -26,6 +26,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Patients tab filters and recall | `apps/api/src/patients/patients.service.ts` `search()`, `src/scheduling/recall.ts`; `PatientListQuery` in `packages/shared/src/schemas.ts`; `apps/web/src/pages/Patients.tsx`. See "Patient filters and recall" below |
 | Telehealth triage: cases, intake, jurisdiction eligibility, sessions, remote findings, signing evidence | 0009; `apps/api/src/telehealth/*` (`RtcAdapter`, `FakeRtcAdapter`); `packages/shared/src/telehealth.ts`; `config/jurisdiction_registry.json`; `apps/web/src/pages/telehealth/*`, portal `telehealth.tsx`; details in `telehealth.md` |
 | Periodontal charting (Phase 6): six-site probing, recession, CAL, BOP, suppuration, plaque, calculus, furcation, mobility, keratinized gingiva | 0010; `apps/api/src/charting/perio.service.ts`, `perio-rows.ts`, `entry-kinds.ts` (`perio`); `packages/shared/src/perio.ts`; `apps/web/src/pages/PerioTab.tsx`. See "Periodontal charting" below |
+| Endodontic charting (Phase 6): AAE-style pulpal and apical diagnosis, pulp and periapical tests with control teeth, canals of a root canal (working length, preparation, obturation) | 0011; `apps/api/src/charting/endo.service.ts`, `endo-rows.ts`, `entry-kinds.ts` (`endo_dx`, `endo_test`, `endo_canal`); `packages/shared/src/endo.ts`; `apps/web/src/pages/EndoTab.tsx`. See "Endodontic charting" below |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
 ## Deliberate deviations
@@ -114,6 +115,39 @@ The **Perio** tab on a patient record charts a full-mouth exam and compares it w
 - The seed gives Jordan a signed comprehensive exam on the 2023 recall visit; today's visit has none, so a new exam
   can be started there and compared with 2023.
 
+## Endodontic charting
+
+The **Endo** tab on a patient record shows one tooth at a time: its endodontic diagnoses, pulp and periapical tests,
+and the canals of each root canal.
+
+- **Three kinds of chart entry**, each recorded in a visit, signed with it and amended by superseding the row:
+  `endo_diagnosis` (pulpal and apical diagnosis plus presenting symptoms), `endo_test` (cold, heat, EPT, percussion,
+  palpation, bite on one tooth, optionally marked as a control) and `endo_canal` (one canal of a root canal
+  procedure). Value lists are our own keys with labels that follow the published AAE terminology; no licensed code
+  content. The database checks every value list, which results go with which test, and that an EPT reading only goes
+  with a responsive EPT and a lingering time only with a thermal test.
+- **Who records what**: tests need `clinical_finding.record` (dentists, hygienists, assistants); the diagnosis needs
+  `diagnosis.create` (dentists only); canals need `procedure.complete` (dentists, hygienists, assistants, as for other
+  procedure annotation). Editing and voiding go through the generic entry routes (`entries/endo-diagnoses|endo-tests|endo-canals`)
+  with the same checks as recording; the kind of test and the canal name are fixed once recorded (void and re-record).
+- **Canals belong to a root canal procedure** in the same visit, on the same tooth (checked by the API and by a
+  database trigger), and each canal name appears once per procedure. Working length is 5-35 mm in 0.5 mm steps,
+  master apical file an ISO size, taper 0.02-0.12.
+- **Completion rule.** When canals are recorded, marking the root canal performed requires every canal to be obturated,
+  calcified or not located, with a working length and obturation recorded for each obturated canal; the canal records
+  then stand in for the free-text "canals treated" and "obturation" fields. Once the root canal is performed (or
+  signed), a canal can't be added or changed back to unfinished. Root canals charted without canal records still
+  complete on the free-text fields.
+- **In person only.** A telehealth visit can't record endo diagnoses, tests or canals.
+- **Colorblind-safe**: abnormal test results carry ⚠ with bold, underlined text (and "Abnormal" for screen readers);
+  control-tooth rows are italic and labelled "(control)"; canal status is written out with a mark (● obturated,
+  ✕ calcified, ○ unfinished in bold); the working-length diagram labels every bar with its canal and length and
+  uses solid, hatched and outline fills for status.
+- The visit ledger and the sign screen show one line per tooth with endo entries, so the dentist sees them as part of
+  what gets signed.
+- The seed gives Jordan's 2021 root canal on #19 its workup (tests on #19 with #20 as control, diagnosis) and three
+  obturated canals with working lengths.
+
 ## Not built yet
 
 - Portal pieces still missing: online payment (needs a payment processor choice), referral and document downloads,
@@ -124,7 +158,10 @@ The **Perio** tab on a patient record charts a full-mouth exam and compares it w
   primary payment), claim status inquiry (276/277), statements by mail, payment plans, collections.
 - Telehealth gaps: LiveKit audio egress into the encrypted media store, transcription, the replay buffer, referral
   records, telehealth billing codes, real state rules (each needs legal review), an approved triage protocol.
-- Phase 6 still to come: endo detail, implants as device records, oral surgery, lab cases, DICOM/CBCT viewing.
+- Phase 6 still to come: implants as device records, oral surgery, lab cases, DICOM/CBCT viewing.
+  Endo gaps: radiographic working-length films linked to a canal, retreatment and apicoectomy detail, a referral
+  letter to an endodontist, and recording on primary teeth from the Endo tab (the API accepts them; the tooth list
+  shows permanent teeth only).
   Perio gaps: probing around implants (needs implant tooth instances), voice entry (needs a speech vendor with a
   BAA), a perio maintenance recall interval, and printing the chart for the patient or a referral.
 - EPCS (Phase 7) and AI assistance (Phase 8).
