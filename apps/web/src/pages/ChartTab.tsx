@@ -8,6 +8,7 @@ import {
   PROCEDURE_CONCEPTS,
   formatSurfaces,
   missingForCompletion,
+  perioSummary,
   positionByUniversal,
   procedureConcept,
   surfacesFor,
@@ -32,6 +33,7 @@ const ROUTE: Record<EntryKind, string> = {
   anesthetic: 'anesthetics',
   material: 'materials',
   media: 'media',
+  perio: 'perio-exams',
 };
 
 /** The schedule appointment a record was opened from; its visit layer is shown first. */
@@ -683,6 +685,7 @@ function VisitLedger({ visit, staffName, onChanged }: { visit: Visit; staffName(
           </tbody>
         </table>
       </div>
+      <PerioLine visit={visit} />
       <Diagnoses visit={visit} writable={writable && can('diagnosis.create')} onChanged={onChanged} />
       {act.error && <div className="err">{errorText(act.error)}</div>}
       <div className="row">
@@ -734,6 +737,27 @@ function VisitLedger({ visit, staffName, onChanged }: { visit: Visit; staffName(
       )}
       {signing && <SignModal visit={visit} onClose={() => setSigning(false)} onSigned={onChanged} />}
     </section>
+  );
+}
+
+/** One line per perio exam in a visit, so the dentist sees it is part of what gets signed. The chart itself is on the Perio tab. */
+function PerioLine({ visit }: { visit: Visit }) {
+  const exams = visit.entries.perio.filter((p) => !p.entered_in_error);
+  if (exams.length === 0) return null;
+  return (
+    <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
+      {exams.map((x) => {
+        const s = perioSummary(x.teeth, x.sites);
+        return (
+          <li key={x.id}>
+            <b>{humanize(x.exam_type)} perio exam</b>: {s.sitesProbed} sites probed
+            {s.bleedingPercent !== null && `, ${s.bleedingPercent}% bleeding`}
+            {s.deepestPocket !== null && `, deepest ${s.deepestPocket} mm`}
+            {s.sitesSevere > 0 && `, ${s.sitesSevere} site${s.sitesSevere === 1 ? '' : 's'} 6 mm or deeper`}. Open the Perio tab to see the chart.
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -792,6 +816,12 @@ function SignModal({ visit, onClose, onSigned }: { visit: Visit; onClose(): void
                 </li>
               ))}
             </ul>
+          </>
+        )}
+        {visit.entries.perio.some((p) => !p.entered_in_error) && (
+          <>
+            <h2>Periodontal exam</h2>
+            <PerioLine visit={visit} />
           </>
         )}
         <label className="row" style={{ alignItems: 'flex-start' }}>

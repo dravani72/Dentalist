@@ -120,5 +120,5 @@ export function marksFor(chart: Chart, focus: string | 'all', showReference: boo
 }
 
 export function emptyEntries(): EntrySet {
-  return { finding: [], existing: [], diagnosis: [], plan: [], procedure: [], note: [], anesthetic: [], material: [], media: [] };
+  return { finding: [], existing: [], diagnosis: [], plan: [], procedure: [], note: [], anesthetic: [], material: [], media: [], perio: [] };
 }

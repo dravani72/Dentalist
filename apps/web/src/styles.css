@@ -302,3 +302,49 @@ p.warn { background: var(--warn-bg); border: 1.5px dashed var(--c-planned); bord
 .back-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; margin-bottom: 10px; background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--r); }
 .back-btn { text-decoration: none; font-size: 15px; }
 .this-appt { font-size: 12px; font-weight: 700; }
+
+/* ---- Periodontal chart. Depth severity is weight, underline and a dark box; site findings are letters;
+   graph lines differ by dash and marker shape. Color only reinforces. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.perio-scroll { overflow-x: auto; display: grid; gap: 18px; padding-bottom: 4px; }
+.perio-arch { display: grid; min-width: 1120px; border-top: 1.5px solid var(--line); border-bottom: 1.5px solid var(--line); }
+.perio-arch .pc-label { font-size: 11px; font-weight: 700; color: var(--muted); padding: 2px 6px 2px 0; display: flex; align-items: center; border-bottom: 1px solid var(--sunken); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.perio-arch .pc { min-height: 24px; border: 0; border-bottom: 1px solid var(--sunken); background: none; padding: 0; font-family: var(--font-mono); font-size: 13px; text-align: center; display: flex; align-items: center; justify-content: center; position: relative; font-variant-numeric: tabular-nums; }
+.perio-arch .t0 { border-left: 1.5px solid var(--line); }
+.perio-arch .span3 { grid-column: span 3; }
+.perio-arch .pc-wrap { display: flex; border-bottom: 1px solid var(--sunken); }
+.perio-arch .pc-wrap .pc { flex: 1; border-bottom: 0; }
+.perio-arch button.pc:hover { background: var(--sunken); }
+.perio-arch .pc.active { outline: 2.5px solid var(--accent); outline-offset: -2.5px; background: var(--sunken); }
+.perio-arch .pc.ro { color: var(--muted); }
+.perio-arch .pc.blank { background: repeating-linear-gradient(135deg, transparent 0 4px, var(--sunken) 4px 5px); }
+.perio-arch .pc.missing { background: repeating-linear-gradient(45deg, var(--sunken) 0 3px, transparent 3px 7px); }
+.perio-arch .tooth-no { font-weight: 700; font-family: var(--font-body); background: var(--sunken); }
+.perio-arch .tooth-no.missing { color: var(--muted); }
+.perio-arch .furc { font-family: var(--font-body); font-weight: 700; font-size: 11px; }
+.perio-arch .mgd { font-size: 10px; margin-left: 2px; }
+.pd-mod { font-weight: 800; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 2px; }
+.pd-sev { font-weight: 800; background: var(--fg) !important; color: var(--surface); }
+.perio-arch .delta { font-size: 8px; position: absolute; top: 1px; right: 1px; line-height: 1; }
+.perio-arch .marks { gap: 0; font-size: 9px; flex-wrap: wrap; align-content: center; }
+.mk { display: inline-grid; place-items: center; min-width: 12px; height: 12px; border-radius: 3px; font-family: var(--font-body); font-size: 9px; font-weight: 800; line-height: 1; border: 1px solid currentColor; }
+.mk-bleeding { color: #fff; background: var(--danger); border-color: var(--danger); border-radius: 50%; }
+.mk-suppuration { color: var(--fg); background: var(--warn-bg); border-style: double; border-width: 3px; min-width: 14px; height: 14px; }
+.mk-plaque { color: var(--fg); border-style: dashed; }
+.mk-calculus { color: var(--fg); background: var(--sunken); }
+.graphcell { border-bottom: 1px solid var(--sunken); }
+.perio-graph { display: block; width: 100%; height: 80px; }
+.perio-graph .g-sep { stroke: var(--line); stroke-width: .6; }
+.perio-graph .g-ref { stroke: var(--sunken); stroke-width: .8; }
+.perio-graph .g-cej, svg .g-cej { stroke: var(--muted); stroke-width: .8; stroke-dasharray: 1 2; }
+.g-gm { stroke: var(--c-finding); stroke-width: 1.8; fill: none; vector-effect: non-scaling-stroke; }
+.g-base { stroke: var(--c-completed); stroke-width: 1.8; stroke-dasharray: 5 3; fill: none; vector-effect: non-scaling-stroke; }
+.g-gm-pt { fill: var(--c-finding); }
+.g-base-pt { fill: var(--c-completed); }
+.keypad { border: 1.5px solid var(--accent); border-radius: var(--r); padding: 10px 12px; display: grid; gap: 8px; background: var(--surface); position: sticky; bottom: 8px; z-index: 2; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.keypad .chip { min-width: 40px; min-height: 36px; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.stats .stat { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; min-width: 110px; }
+.stats .stat .lbl { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.stats .stat .v { font-size: 18px; font-weight: 700; }
+.pc-demo { display: inline-grid; place-items: center; min-width: 20px; height: 20px; font-family: var(--font-mono); border: 1px solid var(--line); }

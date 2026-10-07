@@ -11,8 +11,8 @@ import { afterTelehealthSign, telehealthAuthority, telehealthPayload, verifyTele
 import { ENTRY_KINDS, EntryKind, canonicalEntry } from './entry-kinds';
 import { restartRecallFromVisit } from '../scheduling/recall';
 
-const PAYLOAD_KINDS: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'anesthetic', 'material', 'note', 'media'];
-const LOCK_TABLES = ['telehealth_assessment', 'clinical_finding', 'existing_restoration', 'diagnosis', 'planned_procedure', 'procedure_occurrence', 'procedure_material', 'anesthetic_event', 'encounter_note', 'media_object'];
+const PAYLOAD_KINDS: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'anesthetic', 'material', 'note', 'media', 'perio'];
+const LOCK_TABLES = ['telehealth_assessment', 'clinical_finding', 'existing_restoration', 'diagnosis', 'planned_procedure', 'procedure_occurrence', 'procedure_material', 'anesthetic_event', 'encounter_note', 'media_object', 'perio_exam', 'perio_tooth', 'perio_site'];
 /** Procedure statuses that may stand in a signed record. */
 const SIGNABLE_PROCEDURE = ['CLINICALLY_VERIFIED', 'VOIDED_WITH_REASON', 'AMENDED', 'SIGNED'];
 

@@ -92,6 +92,13 @@ Audio recording needs LiveKit's separate egress service and `LIVEKIT_EGRESS_FILE
 Giving location **ZY** shows the "no licensed dentist" path. Recording is refused until everyone signs the separate
 recording consent. See `docs/architecture/telehealth.md`.
 
+### Perio charting
+
+As rosa.diaz (hygienist), open **Jordan Rivera → Perio**. The signed 2023 comprehensive exam is shown. Today's visit is
+open, so **Start perio exam**, click the first cell (tooth 2, distobuccal depth) and type depths: each digit enters and
+moves to the next site. The 2023 exam is picked for comparison automatically. As amy.jones, the exam appears in
+**Review and sign** with the rest of the visit.
+
 ### Billing
 
 Codes and fees are an invented **SYNTHETIC** set (`SYN-…`, `apps/api/src/billing/synthetic-codes.ts`); the seed loads
@@ -117,7 +124,7 @@ npm run verify:integrity          # re-hashes and re-verifies every signed visit
 npm run typecheck
 ```
 
-The API suites (138 tests) cover tenant isolation through row-level security, privilege and license checks,
+The API suites cover tenant isolation through row-level security, privilege and license checks,
 double-booking, sign/lock/amend, database-level immutability, integrity verification, eRx screening and idempotent
 transmission, webhook signature/replay checks, break-glass, the audit hash chain, and the patient portal
 (`test/portal.test.ts`: per-patient database wall, scopes, age rules, revocation, sign-in codes and lockout,
@@ -125,7 +132,9 @@ consent hashing and immutability, PHI-free notifications, online booking) and th
 (`test/billing.test.ts`: charges from signed work only, append-only ledger, estimates, claims, remittance posted once)
 and telehealth (`test/telehealth.test.ts` and `test/telehealth-policy.test.ts`: jurisdiction eligibility, lobby and
 room-scoped tokens, consent-gated audio-only recording, holds on location, consent or license change, signed evidence,
-no-show closure, webhook replay, telehealth prescribing).
+no-show closure, webhook replay, telehealth prescribing) and perio charting (`test/perio.test.ts`: per-tooth saves
+and version locks, furcation and range checks, front desk and other-practice refusals, database guards, signing,
+amendment by superseding the exam, integrity).
 
 ## Layout
 

@@ -136,7 +136,7 @@ export type EvidenceQuality = (typeof EVIDENCE_QUALITIES)[number];
 /**
  * Finding types that cannot be established by looking at live video or a photo (TH-005): no
  * radiographic interpretation unless the finding cites a radiograph, never probing or mobility
- * (the chart has no such finding types; perio charting is not built).
+ * (perio exams cannot be started on a telehealth visit at all).
  */
 export const RADIOGRAPHIC_FINDING_TYPES: readonly (typeof FINDING_TYPES)[number][] = ['periapical_lesion'];
 export const RADIOGRAPH_MODALITIES = ['bitewing', 'periapical', 'panoramic', 'fmx', 'cephalometric', 'cbct'] as const;

@@ -30,6 +30,7 @@ import { conflict, invalid, notFound } from '../common/errors';
 import { ENTRY_KINDS, EntryKind, PROCEDURE_DETAIL_COLUMNS } from './entry-kinds';
 import { suggestBillingCode } from '../billing/codes';
 import { caseForEncounter } from '../telehealth/hooks';
+import { copyPerioMeasurements } from './perio-rows';
 
 export interface EncounterRow {
   id: string;
@@ -47,8 +48,9 @@ export interface EncounterRow {
 /** Select an entry table with the displayed tooth number joined in (display only, never a key). */
 export function entrySelect(kind: EntryKind, where: string): string {
   const def = ENTRY_KINDS[kind];
-  if (!def.hasTooth) return `SELECT e.* FROM ${def.table} e WHERE ${where}`;
-  return `SELECT e.*, dp.universal AS tooth_universal, dp.id AS dental_position_id
+  const derived = def.derived ? `, ${def.derived.sql}` : '';
+  if (!def.hasTooth) return `SELECT e.*${derived} FROM ${def.table} e WHERE ${where}`;
+  return `SELECT e.*, dp.universal AS tooth_universal, dp.id AS dental_position_id${derived}
             FROM ${def.table} e
             LEFT JOIN tooth_instance ti ON ti.id = e.tooth_instance_id
             LEFT JOIN dental_position dp ON dp.id = ti.dental_position_id
@@ -132,7 +134,7 @@ export class ChartService {
   }
 
   async encounterEntries(tx: Tx, encounterId: string) {
-    const kinds: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'note', 'anesthetic', 'material', 'media'];
+    const kinds: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'note', 'anesthetic', 'material', 'media', 'perio'];
     const out: Record<string, unknown[]> = {};
     for (const k of kinds) {
       out[k] = await tx.query(entrySelect(k, effectiveWhere(k)) + ' ORDER BY e.recorded_at', [encounterId]);
@@ -176,7 +178,7 @@ export class ChartService {
 
   // ------------------------------------------------------------------ entries
 
-  private async toothInstance(tx: Tx, actor: Actor, patientId: string, universal: string | undefined) {
+  async toothInstance(tx: Tx, actor: Actor, patientId: string, universal: string | undefined) {
     if (!universal) return { id: null as string | null, position: null };
     const position = positionByUniversal(universal);
     if (!position) throw invalid(`Unknown tooth ${universal}`);
@@ -202,7 +204,7 @@ export class ChartService {
     return s;
   }
 
-  private async writableEncounter(tx: Tx, actor: Actor, encounterId: string, action: string) {
+  async writableEncounter(tx: Tx, actor: Actor, encounterId: string, action: string) {
     const e = await this.loadEncounter(tx, encounterId);
     await this.access.requirePatientAccess(tx, actor, e.patient_id, action);
     if (!ENCOUNTER_WRITABLE.includes(e.status)) {
@@ -413,24 +415,8 @@ export class ChartService {
       if (changedFields.length === 0) return { id, version: row.version };
 
       if (row.locked_at) {
-        // Amendment path: copy the row, apply changes, link to the signed original.
         if (!amendmentId) throw conflict('This entry is signed; start an amendment to change it');
-        const copy: Record<string, unknown> = { ...stripForCopy(row), ...values, supersedes_id: id, amendment_id: amendmentId, version: row.version + 1, recorded_by: actor.staffId };
-        if (kind === 'procedure') copy.status = 'CLINICALLY_VERIFIED';
-        const cols = Object.keys(copy);
-        const r = await tx.one<{ id: string }>(
-          `INSERT INTO ${def.table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => '$' + (i + 1)).join(', ')}) RETURNING id`,
-          cols.map((c) => toParam(copy[c])),
-        );
-        if (kind === 'procedure') await tx.query("UPDATE procedure_occurrence SET status = 'AMENDED' WHERE id = $1", [id]);
-        await this.audit.record(tx, actor, {
-          action: `${kind}.amend`,
-          objectType: def.table,
-          objectId: r!.id,
-          patientId: row.patient_id,
-          details: { supersedes: id, amendmentId, changedFields },
-        });
-        return { id: r!.id, version: row.version + 1, supersedes: id };
+        return this.supersedeEntry(tx, actor, kind, row, values, amendmentId);
       }
 
       const sets = changedFields.map((c, i) => `${c} = $${i + 2}`);
@@ -447,6 +433,34 @@ export class ChartService {
       });
       return { id, version: row.version + 1 };
     });
+  }
+
+  /**
+   * Amendment path for a signed entry: copy the row, apply the changes, link the copy to the
+   * signed original. The signed row is never touched (procedures only get their workflow
+   * status set to AMENDED). A perio exam's measurements are copied with it.
+   */
+  async supersedeEntry(tx: Tx, actor: Actor, kind: EntryKind, row: Record<string, unknown> & { patient_id: string; version: number }, values: Record<string, unknown>, amendmentId: string) {
+    const def = ENTRY_KINDS[kind];
+    const id = row.id as string;
+    const copy: Record<string, unknown> = { ...stripForCopy(row), ...values, supersedes_id: id, amendment_id: amendmentId, version: row.version + 1, recorded_by: actor.staffId };
+    if (kind === 'procedure') copy.status = 'CLINICALLY_VERIFIED';
+    const cols = Object.keys(copy);
+    const r = await tx.one<{ id: string }>(
+      `INSERT INTO ${def.table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => '$' + (i + 1)).join(', ')}) RETURNING id`,
+      cols.map((c) => toParam(copy[c])),
+    );
+    if (kind === 'procedure') await tx.query("UPDATE procedure_occurrence SET status = 'AMENDED' WHERE id = $1", [id]);
+    if (kind === 'perio') await copyPerioMeasurements(tx, id, r!.id);
+    const changedFields = Object.keys(values);
+    await this.audit.record(tx, actor, {
+      action: `${kind}.amend`,
+      objectType: def.table,
+      objectId: r!.id,
+      patientId: row.patient_id,
+      details: { supersedes: id, amendmentId, changedFields },
+    });
+    return { id: r!.id, version: row.version + 1, supersedes: id };
   }
 
   /** Retract an entry entered in error. Never a delete: the row stays, flagged, with a reason. */
@@ -624,7 +638,7 @@ export function splitDetails(conceptKey: string, details: Record<string, unknown
   return { columns, extras };
 }
 
-const NON_COPY = new Set(['id', 'tooth_universal', 'dental_position_id', 'locked_at', 'updated_by', 'updated_at', 'recorded_at']);
+const NON_COPY = new Set(['id', 'tooth_universal', 'dental_position_id', 'locked_at', 'updated_by', 'updated_at', 'recorded_at', 'teeth', 'sites']);
 function stripForCopy(row: Record<string, unknown>) {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) if (!NON_COPY.has(k)) out[k] = v;

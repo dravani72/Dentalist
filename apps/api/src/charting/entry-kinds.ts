@@ -4,7 +4,7 @@
  * billing projection) are deliberately left out of the canonical form: they are not part of
  * what the dentist attests to.
  */
-export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media';
+export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media' | 'perio';
 
 export interface EntryKindDef {
   table: string;
@@ -16,6 +16,11 @@ export interface EntryKindDef {
   hasVersion: boolean;
   /** Whether amendments supersede rows of this kind (false: rows are only ever added). */
   supersedable: boolean;
+  /**
+   * Extra select-list items computed from child tables (for example a perio exam's
+   * measurements). They are read with the entry, attested with it, and never copied as columns.
+   */
+  derived?: { sql: string; columns: readonly string[] };
 }
 
 export const PROCEDURE_DETAIL_COLUMNS = [
@@ -34,6 +39,32 @@ export const PROCEDURE_DETAIL_COLUMNS = [
   'lab_case_reference',
   'postop_instructions',
 ] as const;
+
+/**
+ * A perio exam's measurements, aggregated in a fixed order so the attested form is stable.
+ * Timestamps are left out on purpose: their text form depends on the session time zone. Who
+ * recorded and last changed each row is kept.
+ */
+const PERIO_DERIVED_SQL = `
+  (SELECT coalesce(jsonb_agg(jsonb_build_object(
+            'tooth_instance_id', t.tooth_instance_id, 'tooth', tdp.universal, 'mobility', t.mobility,
+            'keratinized_gingiva_mm', t.keratinized_gingiva_mm, 'mucogingival_defect', t.mucogingival_defect,
+            'note', t.note, 'version', t.version, 'recorded_by', t.recorded_by, 'updated_by', t.updated_by)
+          ORDER BY t.tooth_instance_id), '[]'::jsonb)
+     FROM perio_tooth t
+     LEFT JOIN tooth_instance tti ON tti.id = t.tooth_instance_id
+     LEFT JOIN dental_position tdp ON tdp.id = tti.dental_position_id
+    WHERE t.perio_exam_id = e.id) AS teeth,
+  (SELECT coalesce(jsonb_agg(jsonb_build_object(
+            'tooth_instance_id', ps.tooth_instance_id, 'tooth', sdp.universal, 'site', ps.site,
+            'probing_depth', ps.probing_depth, 'recession', ps.recession, 'cal', ps.cal,
+            'bleeding', ps.bleeding, 'suppuration', ps.suppuration, 'plaque', ps.plaque, 'calculus', ps.calculus,
+            'furcation', ps.furcation, 'recorded_by', ps.recorded_by, 'updated_by', ps.updated_by)
+          ORDER BY ps.tooth_instance_id, ps.site), '[]'::jsonb)
+     FROM perio_site ps
+     LEFT JOIN tooth_instance sti ON sti.id = ps.tooth_instance_id
+     LEFT JOIN dental_position sdp ON sdp.id = sti.dental_position_id
+    WHERE ps.perio_exam_id = e.id) AS sites`;
 
 export const ENTRY_KINDS: Record<EntryKind, EntryKindDef> = {
   finding: {
@@ -123,6 +154,15 @@ export const ENTRY_KINDS: Record<EntryKind, EntryKindDef> = {
     hasVersion: false,
     supersedable: false,
   },
+  perio: {
+    table: 'perio_exam',
+    editable: ['exam_type', 'note'],
+    clinical: ['exam_type', 'note', 'teeth', 'sites'],
+    hasTooth: false,
+    hasVersion: true,
+    supersedable: true,
+    derived: { sql: PERIO_DERIVED_SQL, columns: ['teeth', 'sites'] },
+  },
 };
 
 export const ROUTE_KINDS: Record<string, EntryKind> = {
@@ -133,6 +173,7 @@ export const ROUTE_KINDS: Record<string, EntryKind> = {
   procedures: 'procedure',
   notes: 'note',
   anesthetics: 'anesthetic',
+  'perio-exams': 'perio',
 };
 
 function norm(v: unknown): unknown {

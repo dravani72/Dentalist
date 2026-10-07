@@ -14,6 +14,7 @@ import { PatientsService } from '../patients/patients.service';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { ChartService } from '../charting/chart.service';
 import { SigningService } from '../charting/signing.service';
+import { PerioService } from '../charting/perio.service';
 import { MediaService } from '../media/media.service';
 import { PrescribingService } from '../prescribing/prescribing.service';
 import { PortalStaffService } from '../portal/portal-staff.service';
@@ -47,6 +48,7 @@ async function main() {
   const scheduling = app.get(SchedulingService);
   const chart = app.get(ChartService);
   const signing = app.get(SigningService);
+  const perio = app.get(PerioService);
   const media = app.get(MediaService);
   const rx = app.get(PrescribingService);
   const portalStaff = app.get(PortalStaffService);
@@ -55,6 +57,7 @@ async function main() {
   const amy = await scriptedActor(owner, maple, 'amy');
   const lee = await scriptedActor(owner, maple, 'lee');
   const jane = await scriptedActor(owner, maple, 'jane');
+  const rosa = await scriptedActor(owner, maple, 'rosa');
   const frank = await scriptedActor(owner, maple, 'frank');
 
   // ---------------------------------------------------------------- patients
@@ -143,6 +146,31 @@ async function main() {
     await chart.procedureStatus(jane, p!.id, 'PERFORMED');
   });
 
+  /**
+   * A plausible synthetic perio chart: healthy 2-3 mm sulci, slight recession on the lower
+   * anteriors, and early pockets with bleeding around the molars that had work (#3, #14, #19, #30).
+   */
+  async function seedPerioChart(by: Actor, examId: string) {
+    const missing = new Set(['1', '16', '17', '32']);
+    const deeper: Record<string, Partial<Record<string, number>>> = {
+      '3': { DB: 5, DL: 4 }, '14': { MB: 4, ML: 4 }, '19': { DB: 4, B: 4, DL: 5 }, '30': { MB: 4, ML: 4 },
+    };
+    for (let n = 1; n <= 32; n++) {
+      const t = String(n);
+      if (missing.has(t)) continue;
+      const lowerAnterior = n >= 22 && n <= 27;
+      const sites = (['MB', 'B', 'DB', 'DL', 'L', 'ML'] as const).map((site, i) => {
+        const pd = deeper[t]?.[site] ?? ((n + i) % 3 === 0 ? 3 : 2);
+        return {
+          site, probingDepth: pd, recession: lowerAnterior && (site === 'B' || site === 'L') ? 1 : 0,
+          bleeding: pd >= 4 || (n + i) % 11 === 0, suppuration: false, plaque: (n + i) % 7 === 0, calculus: lowerAnterior && site === 'L', furcation: null as number | null,
+        };
+      });
+      if (t === '19') sites.find((s) => s.site === 'B')!.furcation = 1;
+      await perio.recordTooth(by, examId, { tooth: t, expectedVersion: 0, sites, mobility: 0, keratinizedGingivaMm: null, mucogingivalDefect: false, note: null });
+    }
+  }
+
   // Visit 4: recall 2023, crown #3
   await visit(amy, '2023-08-22', 'Recall exam', { label: 'BWX', modality: 'bitewing', upper: full([2, 3, 4, 5, 12, 13, 14, 15]), lower: full([31, 30, 29, 28, 21, 20, 19, 18]).map((t) => (t.universal === 19 ? { ...t, crown: true } : t.universal === 30 ? { ...t, restoration: 'MOD' } : t)), teeth: [] }, async (id) => {
     await chart.addFinding(amy, id, { tooth: '3', category: 'pathology', findingType: 'fracture', surfaces: ['D', 'L'], certainty: 'confirmed', note: 'Fractured DL cusp, symptomatic on biting.' });
@@ -153,6 +181,9 @@ async function main() {
       details: { shade: 'A2', cement: 'resin', contact_verified: true, occlusion_verified: true }, anesthetics: [],
     });
     await chart.procedureStatus(jane, p!.id, 'PERFORMED');
+    // Full-mouth perio chart by the hygienist, for comparison with the next exam.
+    const exam = await perio.createExam(rosa, id, { examType: 'comprehensive' });
+    await seedPerioChart(rosa, exam.id);
   });
 
   // ---------------------------------------------------------------- billing history

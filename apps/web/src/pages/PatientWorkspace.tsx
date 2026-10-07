@@ -7,12 +7,13 @@ import { useSession } from '../lib/session';
 import type { PatientDetail } from '../lib/types';
 import { ChartTab, type FromAppointment } from './ChartTab';
 import { HistoryTab } from './HistoryTab';
+import { PerioTab } from './PerioTab';
 import { PrescriptionsTab } from './PrescriptionsTab';
 import { PortalAccessTab } from './PortalAccessTab';
 import { BillingTab } from './billing/BillingTab';
 
-type Tab = 'chart' | 'history' | 'rx' | 'billing' | 'portal' | 'access';
-const TABS: readonly string[] = ['chart', 'history', 'rx', 'billing', 'portal', 'access'];
+type Tab = 'chart' | 'perio' | 'history' | 'rx' | 'billing' | 'portal' | 'access';
+const TABS: readonly string[] = ['chart', 'perio', 'history', 'rx', 'billing', 'portal', 'access'];
 
 export function PatientWorkspace({ patientId, initialTab }: { patientId: string; initialTab?: string }) {
   const { can } = useSession();
@@ -44,6 +45,7 @@ export function PatientWorkspace({ patientId, initialTab }: { patientId: string;
   const d = detail.data;
   const tabs: [Tab, string][] = [
     ['chart', 'Chart'],
+    ['perio', 'Perio'],
     ['history', 'Medical history'],
     ['rx', 'Prescriptions'],
   ];
@@ -67,6 +69,7 @@ export function PatientWorkspace({ patientId, initialTab }: { patientId: string;
       {tab === 'chart' && (day.isFetched || !fromSchedule || !can('schedule.read')) && (
         <ChartTab key={fromSchedule?.appointmentId ?? 'chart'} patientId={patientId} patient={d} fromAppointment={fromAppointment} />
       )}
+      {tab === 'perio' && <PerioTab patientId={patientId} patient={d} />}
       {tab === 'history' && <HistoryTab patientId={patientId} d={d} />}
       {tab === 'rx' && <PrescriptionsTab patientId={patientId} d={d} />}
       {tab === 'billing' && can('billing.read') && <BillingTab patientId={patientId} />}
