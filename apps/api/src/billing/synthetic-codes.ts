@@ -36,6 +36,7 @@ export const SYNTHETIC_CODES: CodeRow[] = [
   { code: 'SYN-402', descriptor: 'Synthetic: root canal, premolar', category: 'endodontic', fee: 100000 },
   { code: 'SYN-403', descriptor: 'Synthetic: root canal, molar', category: 'endodontic', fee: 125000 },
   { code: 'SYN-501', descriptor: 'Synthetic: tooth removal', category: 'oral_surgery', fee: 18000 },
+  { code: 'SYN-511', descriptor: 'Synthetic: soft-tissue biopsy', category: 'oral_surgery', fee: 32000 },
   { code: 'SYN-601', descriptor: 'Synthetic: implant placement', category: 'implant', fee: 210000 },
 ];
 
@@ -57,6 +58,7 @@ export const SYNTHETIC_RULES: { concept: string; surfaceCount: number | null; to
   { concept: 'root_canal_therapy', surfaceCount: null, toothClass: 'premolar', code: 'SYN-402' },
   { concept: 'root_canal_therapy', surfaceCount: null, toothClass: 'molar', code: 'SYN-403' },
   { concept: 'extraction', surfaceCount: null, toothClass: null, code: 'SYN-501' },
+  { concept: 'biopsy', surfaceCount: null, toothClass: null, code: 'SYN-511' },
   { concept: 'implant_placement', surfaceCount: null, toothClass: null, code: 'SYN-601' },
 ];
 

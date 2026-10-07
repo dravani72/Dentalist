@@ -10,12 +10,13 @@ import { HistoryTab } from './HistoryTab';
 import { PerioTab } from './PerioTab';
 import { EndoTab } from './EndoTab';
 import { ImplantsTab } from './ImplantsTab';
+import { SurgeryTab } from './SurgeryTab';
 import { PrescriptionsTab } from './PrescriptionsTab';
 import { PortalAccessTab } from './PortalAccessTab';
 import { BillingTab } from './billing/BillingTab';
 
-type Tab = 'chart' | 'perio' | 'endo' | 'implants' | 'history' | 'rx' | 'billing' | 'portal' | 'access';
-const TABS: readonly string[] = ['chart', 'perio', 'endo', 'implants', 'history', 'rx', 'billing', 'portal', 'access'];
+type Tab = 'chart' | 'perio' | 'endo' | 'implants' | 'surgery' | 'history' | 'rx' | 'billing' | 'portal' | 'access';
+const TABS: readonly string[] = ['chart', 'perio', 'endo', 'implants', 'surgery', 'history', 'rx', 'billing', 'portal', 'access'];
 
 export function PatientWorkspace({ patientId, initialTab }: { patientId: string; initialTab?: string }) {
   const { can } = useSession();
@@ -50,6 +51,7 @@ export function PatientWorkspace({ patientId, initialTab }: { patientId: string;
     ['perio', 'Perio'],
     ['endo', 'Endo'],
     ['implants', 'Implants'],
+    ['surgery', 'Surgery'],
     ['history', 'Medical history'],
     ['rx', 'Prescriptions'],
   ];
@@ -76,6 +78,7 @@ export function PatientWorkspace({ patientId, initialTab }: { patientId: string;
       {tab === 'perio' && <PerioTab patientId={patientId} patient={d} />}
       {tab === 'endo' && <EndoTab patientId={patientId} patient={d} />}
       {tab === 'implants' && <ImplantsTab patientId={patientId} patient={d} />}
+      {tab === 'surgery' && <SurgeryTab patientId={patientId} patient={d} />}
       {tab === 'history' && <HistoryTab patientId={patientId} d={d} />}
       {tab === 'rx' && <PrescriptionsTab patientId={patientId} d={d} />}
       {tab === 'billing' && can('billing.read') && <BillingTab patientId={patientId} />}

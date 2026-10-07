@@ -19,6 +19,7 @@ import { Xray } from '../components/Xray';
 import { api, errorText } from '../lib/api';
 import { EndoLine } from './EndoTab';
 import { ImplantLine } from './ImplantsTab';
+import { SurgeryLine } from './SurgeryTab';
 import { OPEN_PLAN, itemsFor, marksFor, type ChartItem, type EntryKind } from '../lib/chart-model';
 import { conceptLabel, fmtDate, fmtStamp, humanize } from '../lib/format';
 import { useSession } from '../lib/session';
@@ -41,6 +42,9 @@ const ROUTE: Record<EntryKind, string> = {
   endo_canal: 'endo-canals',
   implant: 'implants',
   implant_event: 'implant-events',
+  surgery: 'surgical-details',
+  specimen: 'biopsy-specimens',
+  specimen_result: 'biopsy-results',
 };
 
 /** The schedule appointment a record was opened from; its visit layer is shown first. */
@@ -695,6 +699,7 @@ function VisitLedger({ visit, staffName, onChanged }: { visit: Visit; staffName(
       <PerioLine visit={visit} />
       <EndoLine visit={visit} />
       <ImplantLine visit={visit} />
+      <SurgeryLine visit={visit} />
       <Diagnoses visit={visit} writable={writable && can('diagnosis.create')} onChanged={onChanged} />
       {act.error && <div className="err">{errorText(act.error)}</div>}
       <div className="row">
@@ -843,6 +848,12 @@ function SignModal({ visit, onClose, onSigned }: { visit: Visit; onClose(): void
           <>
             <h2>Implants</h2>
             <ImplantLine visit={visit} />
+          </>
+        )}
+        {(['surgery', 'specimen', 'specimen_result'] as const).some((k) => visit.entries[k].some((e) => !e.entered_in_error)) && (
+          <>
+            <h2>Oral surgery</h2>
+            <SurgeryLine visit={visit} />
           </>
         )}
         <label className="row" style={{ alignItems: 'flex-start' }}>

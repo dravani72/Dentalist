@@ -5,7 +5,7 @@ import { ageFrom, fmtDate, fmtTime, patientName } from '../lib/format';
 import { go } from '../lib/router';
 import { useSession } from '../lib/session';
 import type { PatientRow, Staff } from '../lib/types';
-import { formatCents } from '@teeth/shared';
+import { daysBetween, formatCents, specimenStatus, SPECIMEN_STATUS_LABELS } from '@teeth/shared';
 
 interface PatientListRow extends PatientRow {
   recall_due: string | null;
@@ -96,6 +96,7 @@ export function Patients() {
         </div>
       </div>
       {creating && <NewPatient />}
+      {can('clinical_finding.record') && <BiopsyWorklist />}
       <section className="panel">
         <div className="field">
           <label htmlFor="psearch">Search by name, chart number or date of birth</label>
@@ -297,5 +298,51 @@ function NewPatient() {
         </button>
       </div>
     </form>
+  );
+}
+
+interface AwaitingSpecimen {
+  specimen_id: string;
+  patient_id: string;
+  patient_name: string;
+  site: string;
+  lab_name: string;
+  collected_at: string;
+}
+
+/**
+ * Biopsies still waiting for a pathology result at this practice, oldest first. Shown only when
+ * there are some, so a lost or late report is chased instead of forgotten.
+ */
+function BiopsyWorklist() {
+  const list = useQuery({
+    queryKey: ['biopsies-awaiting'],
+    queryFn: () => api.get<{ overdueAfterDays: number; specimens: AwaitingSpecimen[] }>('/biopsies/awaiting-results'),
+    staleTime: 60_000,
+  });
+  const rows = list.data?.specimens ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <section className="panel">
+      <h2>Biopsy results not back yet ({rows.length})</h2>
+      <ul className="biopsy-worklist">
+        {rows.map((r) => {
+          const status = specimenStatus(r.collected_at, null);
+          const days = daysBetween(r.collected_at, new Date());
+          return (
+            <li key={r.specimen_id}>
+              <span className={`pill specimen-status sp-${status}`}>
+                <span aria-hidden="true">{status === 'overdue' ? '⚠' : '◷'}</span> {SPECIMEN_STATUS_LABELS[status]}
+              </span>{' '}
+              <a href={`#/patients/${r.patient_id}/surgery`}>
+                {r.patient_name}
+              </a>
+              : {r.site}, sent {fmtDate(r.collected_at)} to {r.lab_name} ({days} day{days === 1 ? '' : 's'})
+            </li>
+          );
+        })}
+      </ul>
+      <p className="hint">Results more than {list.data!.overdueAfterDays} days out are marked overdue; call the lab.</p>
+    </section>
   );
 }

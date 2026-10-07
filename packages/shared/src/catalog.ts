@@ -154,6 +154,17 @@ export const PROCEDURE_CONCEPTS: readonly ProcedureConcept[] = [
     ],
   },
   {
+    key: 'biopsy',
+    label: 'Biopsy, oral soft tissue',
+    scope: 'mouth',
+    chartAs: 'none',
+    fields: [
+      { key: 'hemostasis', label: 'Hemostasis achieved', kind: 'boolean', requiredToComplete: true },
+      { key: 'sutures', label: 'Sutures', kind: 'text' },
+      { key: 'postop_instructions', label: 'Post-op instructions delivered', kind: 'boolean', requiredToComplete: true },
+    ],
+  },
+  {
     key: 'implant_placement',
     label: 'Implant placement',
     scope: 'tooth',
