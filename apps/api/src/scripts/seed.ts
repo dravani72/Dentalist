@@ -19,6 +19,8 @@ import { EndoService } from '../charting/endo.service';
 import { ImplantService } from '../charting/implant.service';
 import { SurgeryService } from '../charting/surgery.service';
 import { LabService } from '../lab/lab.service';
+import { ImagingService } from '../imaging/imaging.service';
+import { phantomSite30, syntheticCbct } from '../imaging/phantom';
 import { MediaService } from '../media/media.service';
 import { PrescribingService } from '../prescribing/prescribing.service';
 import { PortalStaffService } from '../portal/portal-staff.service';
@@ -57,6 +59,7 @@ async function main() {
   const implants = app.get(ImplantService);
   const surgery = app.get(SurgeryService);
   const media = app.get(MediaService);
+  const imaging = app.get(ImagingService);
   const rx = app.get(PrescribingService);
   const portalStaff = app.get(PortalStaffService);
   const portalAuth = app.get(PortalAuthService);
@@ -87,6 +90,14 @@ async function main() {
   await rx.setPreference(frank, jordan.id, { partnerPharmacyId: pharmacies[0]!.partnerPharmacyId, rank: 'primary' });
   await rx.setPreference(frank, jordan.id, { partnerPharmacyId: pharmacies.find((p) => p.open24h)!.partnerPharmacyId, rank: '24_hour' });
 
+  // Synthetic CBCT phantoms carry the chart's own identity in their DICOM headers, as a scanner would.
+  const PHANTOM = { size: [200, 200, 90] as [number, number, number], voxelMm: 0.5 };
+  async function phantomFiles(patientId: string, date: string, uid: string, description: string, implantAt30: boolean) {
+    const p = (await owner.query("SELECT chart_number, legal_given_name, legal_family_name, to_char(date_of_birth, 'YYYYMMDD') AS dob FROM patient WHERE id = $1", [patientId])).rows[0];
+    const files = syntheticCbct({ ...PHANTOM, patient: { name: `${p.legal_family_name}^${p.legal_given_name}`, id: p.chart_number, birthDate: p.dob }, date, studyUid: uid, seriesUid: `${uid}.1`, description, implantAt30 });
+    return files.map((f) => Buffer.from(f).toString('base64'));
+  }
+
   // ---------------------------------------------------------------- chart history (signed visits)
   async function visit(by: Actor, date: string, complaint: string, xray: { label: string; modality: 'fmx' | 'bitewing' | 'periapical'; upper: (XrayTooth | null)[]; lower: (XrayTooth | null)[]; teeth: string[] }, record: (encounterId: string) => Promise<void>, sign = true, patientId = jordan.id) {
     const { id } = await chart.openEncounter(by, { patientId, locationId: maple.locationId, chiefComplaint: complaint });
@@ -99,7 +110,7 @@ async function main() {
     });
     await record(id);
     // Backdate the visit while it is still a draft (synthetic history only).
-    for (const t of ['clinical_finding', 'existing_restoration', 'planned_procedure', 'procedure_occurrence', 'anesthetic_event', 'encounter_note', 'media_object', 'endo_diagnosis', 'endo_test', 'endo_canal', 'implant', 'implant_event', 'surgical_detail', 'biopsy_specimen', 'biopsy_result']) {
+    for (const t of ['clinical_finding', 'existing_restoration', 'planned_procedure', 'procedure_occurrence', 'anesthetic_event', 'encounter_note', 'media_object', 'endo_diagnosis', 'endo_test', 'endo_canal', 'implant', 'implant_event', 'surgical_detail', 'biopsy_specimen', 'biopsy_result', 'imaging_study', 'imaging_read']) {
       await owner.query(`UPDATE ${t} SET recorded_at = $2::date + time '14:30' WHERE encounter_id = $1`, [id, date]);
     }
     await owner.query(
@@ -254,6 +265,22 @@ async function main() {
   }, true, hector.id);
   await visit(amy, '2025-08-20', 'Recall exam', { label: 'PA #30', modality: 'periapical', upper: [], lower: pa30({ crown: true }), teeth: ['30'] }, async (id) => {
     await implants.recordEvent(rosa, id, { implantId: implant30, eventType: 'follow_up', isq: null, abutmentTorqueNcm: null, restorationType: null, retention: null, complication: null, boneLossMm: 0.3, note: 'No bleeding or suppuration on probing; stable crestal bone.' });
+    // A synthetic CBCT of the lower jaw with the #30 implant, read by the dentist with two measurements.
+    const study = await imaging.upload(jane, id, {
+      modality: 'cbct', region: 'localized', teeth: ['29', '30', '31'], files: await phantomFiles(hector.id, '20250820', '2.25.9001', 'SIMULATED CBCT, lower right (implant #30)', true),
+      note: 'Yearly implant check; patient reports occasional numbness of the lower lip on the right.',
+    });
+    const at = phantomSite30(PHANTOM);
+    await imaging.recordRead(amy, id, {
+      studyId: study.studyId, entireVolumeReviewed: true,
+      findings: 'Implant #30 fully within bone with intact buccal and lingual plates; no peri-implant radiolucency. Inferior alveolar canal intact and separate from the implant apex. Teeth #29 and #31 unremarkable. Remaining mandible within the field of view unremarkable.',
+      impression: 'Stable, integrated implant #30; no contact with the inferior alveolar canal. Lip numbness not explained by the implant position.',
+      incidentalFindings: false,
+      measurements: [
+        { label: 'Implant #30 apex to canal roof', plane: 'coronal', slice: at.row, a: [at.column, 33], b: [at.column, 24.8] },
+        { label: 'Implant #30 length', plane: 'coronal', slice: at.row, a: [at.column, 33], b: [at.column, 53] },
+      ],
+    });
   }, true, hector.id);
 
   // Oral surgery: Mei Tanaka's impacted #1 came out in 2025 with a suspected sinus opening;
@@ -305,6 +332,13 @@ async function main() {
     }, true, patientId);
   await recentBiopsy(mei.id, 20, 'Lower lip, left of midline', 'Mucocele');
   await recentBiopsy(priya.id, 4, 'Lower labial mucosa', 'Mucocele versus fibroma');
+
+  // Imaging: Samuel's CBCT from nine days ago has not been read, so the imaging worklist shows it overdue.
+  await visit(lee, daysAgoDate(9), 'Lower left ache; CBCT before deciding on #19', pa([18, 19, 20], 'PA #18-20', false), async (id) => {
+    await imaging.upload(jane, id, {
+      modality: 'cbct', region: 'mandible', teeth: [], files: await phantomFiles(samuel.id, daysAgoDate(9).replace(/-/g, ''), '2.25.9002', 'SIMULATED CBCT, mandible', false),
+    });
+  }, true, samuel.id);
 
   // ---------------------------------------------------------------- billing history
   // Charges for the signed visits (invented SYNTHETIC codes and fees). The 2021 work was paid by

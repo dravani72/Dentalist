@@ -15,3 +15,5 @@ export * from './endo';
 export * from './implant';
 export * from './surgery';
 export * from './lab';
+export * from './dicom';
+export * from './imaging';

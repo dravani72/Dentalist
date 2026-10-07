@@ -22,6 +22,8 @@ import { ImplantService } from './charting/implant.service';
 import { SurgeryService } from './charting/surgery.service';
 import { LabService } from './lab/lab.service';
 import { LabController } from './lab/lab.controller';
+import { ImagingService } from './imaging/imaging.service';
+import { ImagingController } from './imaging/imaging.controller';
 import { ChartingController } from './charting/charting.controller';
 import { LocalEncryptedStorage, MEDIA_STORAGE, MediaService } from './media/media.service';
 import { MediaController } from './media/media.controller';
@@ -102,6 +104,7 @@ export class AppModule {
       ImplantService,
       SurgeryService,
       LabService,
+      ImagingService,
       MediaService,
       PrescribingService,
       BillingService,
@@ -129,6 +132,7 @@ export class AppModule {
         SchedulingController,
         ChartingController,
         LabController,
+        ImagingController,
         MediaController,
         PrescribingController,
         AuditController,

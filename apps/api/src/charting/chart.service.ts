@@ -36,6 +36,7 @@ import { copyPerioMeasurements } from './perio-rows';
 import { checkEndoEdit, liveCanals } from './endo-rows';
 import { checkImplantEdit, placedImplant } from './implant-rows';
 import { checkSurgeryEdit, liveSpecimens, liveSurgicalDetail } from './surgery-rows';
+import { checkImagingEdit } from '../imaging/imaging-rows';
 
 export interface EncounterRow {
   id: string;
@@ -139,7 +140,7 @@ export class ChartService {
   }
 
   async encounterEntries(tx: Tx, encounterId: string) {
-    const kinds: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'note', 'anesthetic', 'material', 'media', 'perio', 'endo_dx', 'endo_test', 'endo_canal', 'implant', 'implant_event', 'surgery', 'specimen', 'specimen_result'];
+    const kinds: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'note', 'anesthetic', 'material', 'media', 'perio', 'endo_dx', 'endo_test', 'endo_canal', 'implant', 'implant_event', 'surgery', 'specimen', 'specimen_result', 'imaging_study', 'imaging_read'];
     const out: Record<string, unknown[]> = {};
     for (const k of kinds) {
       out[k] = await tx.query(entrySelect(k, effectiveWhere(k)) + ' ORDER BY e.recorded_at', [encounterId]);
@@ -427,7 +428,7 @@ export class ChartService {
       const sets = changedFields.map((c, i) => `${c} = $${i + 2}`);
       await tx.query(
         `UPDATE ${def.table} SET ${sets.join(', ')}, updated_by = $${changedFields.length + 2}, updated_at = now(), version = version + 1 WHERE id = $1`,
-        [id, ...changedFields.map((c) => toParam(values[c])), actor.staffId],
+        [id, ...changedFields.map((c) => toParam(values[c], !!def.json?.includes(c))), actor.staffId],
       );
       await this.audit.record(tx, actor, {
         action: `${kind}.update`,
@@ -453,7 +454,7 @@ export class ChartService {
     const cols = Object.keys(copy);
     const r = await tx.one<{ id: string }>(
       `INSERT INTO ${def.table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => '$' + (i + 1)).join(', ')}) RETURNING id`,
-      cols.map((c) => toParam(copy[c])),
+      cols.map((c) => toParam(copy[c], !!def.json?.includes(c))),
     );
     if (kind === 'procedure') await tx.query("UPDATE procedure_occurrence SET status = 'AMENDED' WHERE id = $1", [id]);
     if (kind === 'perio') await copyPerioMeasurements(tx, id, r!.id);
@@ -486,7 +487,7 @@ export class ChartService {
         const cols = Object.keys(copy);
         const r = await tx.one<{ id: string }>(
           `INSERT INTO ${def.table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => '$' + (i + 1)).join(', ')}) RETURNING id`,
-          cols.map((c) => toParam(copy[c])),
+          cols.map((c) => toParam(copy[c], !!def.json?.includes(c))),
         );
         if (kind === 'procedure') await tx.query("UPDATE procedure_occurrence SET status = 'AMENDED' WHERE id = $1", [id]);
         await this.audit.record(tx, actor, { action: `${kind}.void`, objectType: def.table, objectId: r!.id, patientId: row.patient_id, details: { supersedes: id, amendmentId } });
@@ -640,6 +641,7 @@ export class ChartService {
     if (kind === 'endo_dx' || kind === 'endo_test' || kind === 'endo_canal') return checkEndoEdit(tx, kind, row, out);
     if (kind === 'implant' || kind === 'implant_event') return checkImplantEdit(kind, row, out);
     if (kind === 'surgery' || kind === 'specimen' || kind === 'specimen_result') return checkSurgeryEdit(tx, kind, row, out);
+    if (kind === 'imaging_study' || kind === 'imaging_read') return checkImagingEdit(tx, kind, row, out);
     return out;
   }
 }
@@ -649,6 +651,7 @@ function privilegeFor(kind: EntryKind) {
     case 'diagnosis':
     case 'endo_dx':
     case 'specimen_result':
+    case 'imaging_read':
       return 'diagnosis.create' as const;
     case 'plan':
       return 'treatment_plan.create' as const;
@@ -662,6 +665,7 @@ function privilegeFor(kind: EntryKind) {
     case 'specimen':
       return 'procedure.complete' as const;
     case 'media':
+    case 'imaging_study':
       return 'media.upload' as const;
     default:
       return 'clinical_finding.record' as const;
@@ -696,7 +700,8 @@ function stripForCopy(row: Record<string, unknown>) {
   return out;
 }
 
-function toParam(v: unknown): unknown {
+function toParam(v: unknown, json = false): unknown {
+  if (json && v !== null && v !== undefined) return JSON.stringify(v);
   if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) return JSON.stringify(v);
   return v;
 }

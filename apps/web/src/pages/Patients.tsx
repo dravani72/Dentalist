@@ -5,7 +5,8 @@ import { ageFrom, fmtDate, fmtTime, patientName } from '../lib/format';
 import { go } from '../lib/router';
 import { useSession } from '../lib/session';
 import type { PatientRow, Staff } from '../lib/types';
-import { daysBetween, formatCents, specimenStatus, SPECIMEN_STATUS_LABELS } from '@teeth/shared';
+import { daysBetween, formatCents, imagingLabel, readStatus, specimenStatus, SPECIMEN_STATUS_LABELS } from '@teeth/shared';
+import { ReadPill } from './ImagingTab';
 
 interface PatientListRow extends PatientRow {
   recall_due: string | null;
@@ -97,6 +98,7 @@ export function Patients() {
       </div>
       {creating && <NewPatient />}
       {can('clinical_finding.record') && <BiopsyWorklist />}
+      {can('clinical_finding.record') && <ImagingWorklist />}
       <section className="panel">
         <div className="field">
           <label htmlFor="psearch">Search by name, chart number or date of birth</label>
@@ -343,6 +345,49 @@ function BiopsyWorklist() {
         })}
       </ul>
       <p className="hint">Results more than {list.data!.overdueAfterDays} days out are marked overdue; call the lab.</p>
+    </section>
+  );
+}
+
+interface UnreadStudy {
+  id: string;
+  study_id: string;
+  patient_id: string;
+  patient_name: string;
+  modality: string;
+  region: string;
+  acquired_at: string;
+  uploaded_at: string;
+}
+
+/**
+ * Scans at this practice that no dentist has read yet, oldest first. A CBCT read covers the whole
+ * volume, so an unread scan is a finding nobody has looked for. Shown only when there are some.
+ */
+function ImagingWorklist() {
+  const list = useQuery({
+    queryKey: ['imaging-unread'],
+    queryFn: () => api.get<{ overdueAfterDays: number; studies: UnreadStudy[] }>('/imaging/unread'),
+    staleTime: 60_000,
+  });
+  const rows = list.data?.studies ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <section className="panel">
+      <h2>Scans not read yet ({rows.length})</h2>
+      <ul className="imaging-worklist">
+        {rows.map((r) => {
+          const days = daysBetween(r.uploaded_at, new Date());
+          return (
+            <li key={r.study_id}>
+              <ReadPill status={readStatus(r.uploaded_at, false)} />{' '}
+              <a href={`#/patients/${r.patient_id}/imaging`}>{r.patient_name}</a>: {imagingLabel(r.modality)}, {imagingLabel(r.region).toLowerCase()}, taken {fmtDate(r.acquired_at)} (
+              {days} day{days === 1 ? '' : 's'} waiting)
+            </li>
+          );
+        })}
+      </ul>
+      <p className="hint">Scans waiting more than {list.data!.overdueAfterDays} days are marked overdue.</p>
     </section>
   );
 }

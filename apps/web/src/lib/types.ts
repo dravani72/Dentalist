@@ -1,4 +1,4 @@
-import type { PerioSiteRow, PerioToothRow } from '@teeth/shared';
+import type { ImagingMeasurement, PerioSiteRow, PerioToothRow } from '@teeth/shared';
 export interface Me {
   staffId: string;
   displayName: string;
@@ -82,6 +82,8 @@ export interface EntrySet {
   surgery: SurgicalDetailEntry[];
   specimen: BiopsySpecimenEntry[];
   specimen_result: BiopsyResultEntry[];
+  imaging_study: ImagingStudyEntry[];
+  imaging_read: ImagingReadEntry[];
 }
 
 /** The structured surgical record of an extraction. */
@@ -125,6 +127,47 @@ export interface BiopsySpecimenEntry extends Entry {
   fixative: string;
   lab_name: string;
   container_label: string | null;
+}
+
+/** A DICOM study (a CBCT volume or a 2D DICOM radiograph). study_id is its lasting identity across amended versions. */
+export interface ImagingStudyEntry extends Entry {
+  study_id: string;
+  modality: string;
+  region: string;
+  teeth: string[];
+  description: string | null;
+  dicom_modality: string;
+  device_manufacturer: string | null;
+  device_model: string | null;
+  operator_id: string;
+  acquired_at: string;
+  kvp: string | null;
+  tube_current_ma: string | null;
+  exposure_ms: string | null;
+  rows: number;
+  columns: number;
+  slices: number;
+  voxel_x_mm: string;
+  voxel_y_mm: string;
+  voxel_z_mm: string;
+  window_center: number;
+  window_width: number;
+  patient_match: string;
+  identity_confirmation: string | null;
+  original_sha256s: string[];
+  original_bytes: string;
+  volume_sha256: string;
+}
+
+/** A dentist's read of a study, recorded in the visit where it was reviewed. */
+export interface ImagingReadEntry extends Entry {
+  study_id: string;
+  entire_volume_reviewed: boolean;
+  findings: string;
+  impression: string;
+  incidental_findings: boolean;
+  referral: string | null;
+  measurements: ImagingMeasurement[];
 }
 
 /** A pathology result for a specimen, recorded in the visit where it was reviewed. */

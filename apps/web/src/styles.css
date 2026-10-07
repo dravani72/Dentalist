@@ -436,3 +436,35 @@ div.surgery-problems { list-style: none; padding-left: 0; }
 .lab-attach-pick input { position: absolute; top: 10px; left: 10px; width: 18px; height: 18px; }
 .lab-attach-pick.on { border: 3px solid var(--accent); padding: 4.5px; }
 @media print { .no-print { display: none !important; } }
+
+/* Imaging. Read statuses pair words with a mark and a border style; the viewer's overlays use shape and text as well as colour. */
+.pill.read-status.rs-unread { color: var(--muted); border-style: dashed; }
+.pill.read-status.rs-overdue { color: var(--danger); border-style: double; border-width: 3px; }
+.pill.read-status.rs-read { color: var(--c-completed); }
+.study-panel.rs-overdue { border-style: dashed; }
+.imaging-table tr.selected td { background: var(--surface-2, rgba(0, 0, 0, .04)); font-weight: 600; }
+.identity-flag { text-decoration: underline; text-decoration-style: wavy; text-underline-offset: 3px; }
+.imaging-worklist { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.viewer { display: grid; gap: 8px; margin: 8px 0; }
+.viewer-tools { flex-wrap: wrap; gap: 6px; align-items: center; }
+.viewer-tools .chip { font-family: inherit; }
+.viewer-range { display: inline-flex; align-items: center; gap: 6px; }
+.viewer-range input[type="range"] { width: 120px; max-width: 30vw; }
+.viewer-panes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.viewer-panes.single { grid-template-columns: minmax(0, 640px); }
+@media (max-width: 900px) { .viewer-panes { grid-template-columns: minmax(0, 1fr); } }
+.viewer-pane { margin: 0; min-width: 0; background: #111; color: #eee; border-radius: 6px; padding: 6px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-content: start; }
+.viewer-pane figcaption { color: #eee; flex-wrap: wrap; gap: 4px; }
+.viewer-stage { position: relative; width: 100%; }
+.viewer-stage canvas, .viewer-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.viewer-stage canvas { image-rendering: pixelated; }
+.viewer-stage svg { cursor: crosshair; }
+.viewer-stage svg.measuring { cursor: copy; }
+.viewer-cross line { stroke: #ffd400; stroke-width: 0.6; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; opacity: .8; }
+.viewer-measure line { stroke: #38d6ff; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.viewer-measure circle { fill: #fff; stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.viewer-measure text { fill: #fff; stroke: #000; stroke-width: 3; paint-order: stroke; vector-effect: non-scaling-stroke; font-weight: 700; }
+.viewer-measurements { width: 100%; }
+.viewer-measurements input { width: 100%; }
+.read-form { display: grid; gap: 6px; }
+.read-form .attest { padding: 8px; border: 1.5px solid var(--line); border-radius: 6px; }

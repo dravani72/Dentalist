@@ -129,6 +129,15 @@ Hector Alvarez's crown #14 is back for today's crown appointment, and Priya Nata
 the same case shows it waiting for Dr. Jones. **Jordan Rivera → Lab cases** has the 2021 crown #19 from prescription
 to seat, with the #19 x-ray that went with it; a new case lets you pick x-rays and photos from the chart to attach. The labs themselves are kept at the bottom of the Lab cases page.
 
+### Imaging
+
+As amy.jones, the **Patients** page lists scans not read yet: Samuel Okafor's CBCT is overdue. **Hector Alvarez →
+Imaging** has a read CBCT of his #30 implant: open it for the axial, coronal and sagittal views, window presets and
+the two measurements in the read. Open **Samuel Okafor → Imaging**, start today's visit, open the scan, use Measure
+and record a read (a CBCT read asks you to confirm you reviewed the whole volume). Assistants can upload a DICOM
+series; a series whose patient doesn't match the chart asks the uploader why it is still this patient. The demo
+CBCTs are synthetic drawings (`apps/api/src/imaging/phantom.ts`), not scans.
+
 ### Billing
 
 Codes and fees are an invented **SYNTHETIC** set (`SYN-…`, `apps/api/src/billing/synthetic-codes.ts`); the seed loads
@@ -174,7 +183,10 @@ completion rules, biopsy specimens and the waiting list, dentist-only results, f
 telehealth refusal, database guards, signing, amendment keeping the specimen identity) and lab cases
 (`test/lab.test.ts`: the lab list, Rx rules, prescriber by privilege, the version check, sending by the prescribing
 dentist only with step-up and a license, the frozen Rx and its digest, attached chart images, the round trip, flags and the overdue list,
-appointment linking, other-practice refusals and row-level security).
+appointment linking, other-practice refusals and row-level security) and imaging (`test/imaging.test.ts`: originals
+kept with digests, refusing non-DICOM, compressed and wrong-kind files, the identity check, 2D studies, front desk,
+assistant and other-practice refusals, the signed volume link, the whole-volume rule, server-side measurements,
+signing, amendment keeping the study's files, row-level security).
 
 ## Layout
 
