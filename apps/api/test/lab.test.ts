@@ -181,6 +181,56 @@ describe('lab cases: sending and the round trip', () => {
   });
 });
 
+describe('lab cases: chart images sent with the case', () => {
+  async function upload(pid: string, modality: string, teeth: string[]) {
+    const e = await amy.post('/api/encounters', { patientId: pid, locationId: w.maple.locationId, chiefComplaint: 'Records for the lab' });
+    const m = await jane.post(`/api/encounters/${e.body.id}/media`, {
+      modality, contentType: 'image/png', dataBase64: Buffer.from(`synthetic ${modality} ${Math.random()}`).toString('base64'), teeth, acquiredAt: new Date().toISOString(),
+    });
+    expect(m.status).toBe(201);
+    return m.body as { id: string; sha256: string };
+  }
+
+  it('attaches the patient’s own images, freezes them with the prescription, and refuses anyone else’s', async () => {
+    const pa = await upload(patientId, 'periapical', ['3']);
+    const photo = await upload(patientId, 'intraoral_photo', []);
+    const theirs = await upload(otherPatientId, 'intraoral_photo', []);
+    const base = { patientId, locationId: w.maple.locationId };
+    expect((await frank.post('/api/lab-cases', { ...base, ...rx({ attachmentIds: [theirs.id] }) })).status).toBe(422);
+    expect((await frank.post('/api/lab-cases', { ...base, ...rx({ attachmentIds: [pa.id, pa.id] }) })).status).toBe(422);
+    const ref = await frank.get(`/api/patients/${patientId}/lab-case-reference`);
+    expect(ref.body.images.map((i: { media_id: string }) => i.media_id)).toEqual(expect.arrayContaining([pa.id, photo.id]));
+    expect(ref.body.images.map((i: { media_id: string }) => i.media_id)).not.toContain(theirs.id);
+    expect(ref.body.images.find((i: { media_id: string }) => i.media_id === pa.id).teeth).toEqual(['P3']);
+
+    const c = await frank.post('/api/lab-cases', { ...base, ...rx({ attachmentIds: [pa.id] }) });
+    expect(c.status).toBe(201);
+    const edit = await jane.post(`/api/lab-cases/${c.body.id}/rx`, { expectedVersion: 1, ...rx({ attachmentIds: [photo.id, pa.id] }) });
+    expect(edit.status).toBe(201);
+    const d = await rosa.get(`/api/lab-cases/${c.body.id}`);
+    expect(d.body.attachments).toEqual([
+      expect.objectContaining({ position: 1, media_id: photo.id, modality: 'intraoral_photo', sha256: photo.sha256 }),
+      expect.objectContaining({ position: 2, media_id: pa.id, modality: 'periapical', teeth: ['P3'] }),
+    ]);
+
+    const sent = await amy.post(`/api/lab-cases/${c.body.id}/send`, { expectedVersion: 2 });
+    expect(sent.status).toBe(201);
+    const [ev] = (await w.owner.query("SELECT rx_snapshot FROM lab_case_event WHERE lab_case_id = $1 AND to_status = 'SENT'", [c.body.id])).rows;
+    expect(ev.rx_snapshot.attachments).toEqual([
+      expect.objectContaining({ position: 1, mediaId: photo.id, sha256: photo.sha256 }),
+      expect.objectContaining({ position: 2, mediaId: pa.id, sha256: pa.sha256 }),
+    ]);
+    expect(sha256Hex(canonicalJson(ev.rx_snapshot))).toBe(sent.body.rxSha256);
+    // Once sent, the attached images are as fixed as the rest of the prescription.
+    await expect(w.owner.query('DELETE FROM lab_case_attachment WHERE lab_case_id = $1', [c.body.id])).rejects.toThrow(/immutable/);
+    await expect(
+      w.owner.query('INSERT INTO lab_case_attachment (org_id, lab_case_id, position, media_object_id, added_by) VALUES ($1,$2,3,$3,$4)', [w.maple.orgId, c.body.id, pa.id, w.maple.staff.jane!.staffId]),
+    ).rejects.toThrow(/immutable/);
+    expect((await omar.get(`/api/patients/${patientId}/lab-case-reference`)).status).toBe(404);
+    expect((await frank.post(`/api/lab-cases/${c.body.id}/cancel`, { expectedVersion: 3, reason: 'Test case for attachments' })).status).toBe(201);
+  });
+});
+
 describe('lab cases: lists and flags', () => {
   it('shows overdue cases on the practice list', async () => {
     const c = await frank.post('/api/lab-cases', { patientId: otherPatientId, locationId: w.maple.locationId, ...rx({ items: [{ restoration: 'veneer', tooth: '8', material: 'lithium_disilicate', shade: 'BL' }] }) });
@@ -188,12 +238,12 @@ describe('lab cases: lists and flags', () => {
     await w.owner.query("UPDATE lab_case SET due_date = current_date - 3 WHERE id = $1", [c.body.id]);
     const overdue = await jane.get('/api/lab-cases?view=overdue');
     expect(overdue.status).toBe(200);
-    expect(overdue.body).toEqual([expect.objectContaining({ id: c.body.id, case_number: 'LC-00003', patient_name: 'Max Lab', flags: ['overdue'] })]);
-    expect((await jane.get('/api/lab-cases?view=all')).body).toHaveLength(3);
+    expect(overdue.body).toEqual([expect.objectContaining({ id: c.body.id, case_number: 'LC-00004', patient_name: 'Max Lab', flags: ['overdue'] })]);
+    expect((await jane.get('/api/lab-cases?view=all')).body).toHaveLength(4);
     expect((await rosa.get('/api/lab-cases')).status).toBe(403);
     const mine = await rosa.get(`/api/patients/${patientId}/lab-cases`);
     expect(mine.status).toBe(200);
-    expect(mine.body.map((x: { status: string }) => x.status).sort()).toEqual(['CANCELLED', 'SEATED']);
+    expect(mine.body.map((x: { status: string }) => x.status).sort()).toEqual(['CANCELLED', 'CANCELLED', 'SEATED']);
   });
 
   it('links a seat appointment of the same patient only', async () => {

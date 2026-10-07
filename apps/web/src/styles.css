@@ -426,3 +426,13 @@ div.surgery-problems { list-style: none; padding-left: 0; }
   body.print-rx .rx-sheet { position: absolute; inset: 0 auto auto 0; width: 100%; border: 0; background: #fff; }
 }
 .nowrap { white-space: nowrap; }
+.rx-images ol { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+.lab-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.lab-thumbs figure { margin: 0; width: 120px; display: grid; gap: 2px; }
+.lab-thumbs img, .lab-attach-pick img { width: 100%; height: 80px; object-fit: cover; border-radius: 4px; background: #000; }
+.lab-attach { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 0; }
+.lab-attach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.lab-attach-pick { display: grid; gap: 4px; padding: 6px; border: 1.5px dashed var(--line); border-radius: 6px; cursor: pointer; position: relative; }
+.lab-attach-pick input { position: absolute; top: 10px; left: 10px; width: 18px; height: 18px; }
+.lab-attach-pick.on { border: 3px solid var(--accent); padding: 4.5px; }
+@media print { .no-print { display: none !important; } }

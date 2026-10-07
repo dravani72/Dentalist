@@ -127,7 +127,7 @@ As frank.ito or amy.jones, the **Lab cases** page lists open cases: Samuel Okafo
 Hector Alvarez's crown #14 is back for today's crown appointment, and Priya Natarajan's night guard is a draft. Open
 **Priya Natarajan → Lab cases** as amy.jones to authorize and send it (asks for an authenticator code); as frank.ito
 the same case shows it waiting for Dr. Jones. **Jordan Rivera → Lab cases** has the 2021 crown #19 from prescription
-to seat. The labs themselves are kept at the bottom of the Lab cases page.
+to seat, with the #19 x-ray that went with it; a new case lets you pick x-rays and photos from the chart to attach. The labs themselves are kept at the bottom of the Lab cases page.
 
 ### Billing
 
@@ -173,7 +173,7 @@ and oral surgery (`test/surgery.test.ts`: surgical record tied to an extraction,
 completion rules, biopsy specimens and the waiting list, dentist-only results, front desk and other-practice refusals,
 telehealth refusal, database guards, signing, amendment keeping the specimen identity) and lab cases
 (`test/lab.test.ts`: the lab list, Rx rules, prescriber by privilege, the version check, sending by the prescribing
-dentist only with step-up and a license, the frozen Rx and its digest, the round trip, flags and the overdue list,
+dentist only with step-up and a license, the frozen Rx and its digest, attached chart images, the round trip, flags and the overdue list,
 appointment linking, other-practice refusals and row-level security).
 
 ## Layout

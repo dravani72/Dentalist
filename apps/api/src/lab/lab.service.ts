@@ -46,6 +46,10 @@ const CASE_LIST_SQL = `
     JOIN staff_member d ON d.id = c.prescribing_dentist_id
     LEFT JOIN appointment a ON a.id = c.appointment_id`;
 
+/** Dental position codes of the teeth an image shows (for display). */
+const TEETH_OF_MEDIA = `(SELECT coalesce(array_agg(t.dental_position_id), '{}')
+                           FROM tooth_instance t WHERE t.id = ANY(m.tooth_instance_ids))`;
+
 /**
  * Lab cases: prescriptions to dental labs and their round trips. A licensed dentist authorizes
  * each send (lab_case.authorize plus an active license in the location's state); everyone else
@@ -147,6 +151,12 @@ export class LabService {
     const [head] = await tx.query<Record<string, unknown> & { status: string; due_date: string | null; appointment_start: Date | null }>(`${CASE_LIST_SQL} WHERE c.id = $1`, [id]);
     const full = await tx.one('SELECT * FROM lab_case WHERE id = $1', [id]);
     const items = await tx.query('SELECT id, position, restoration, tooth_universal, arch, material, shade, planned_procedure_id, note FROM lab_case_item WHERE lab_case_id = $1 ORDER BY position', [id]);
+    const attachments = await tx.query(
+      `SELECT a.position, m.id AS media_id, m.modality, m.content_type, m.acquired_at, m.sha256, m.entered_in_error,
+              ${TEETH_OF_MEDIA} AS teeth
+         FROM lab_case_attachment a JOIN media_object m ON m.id = a.media_object_id WHERE a.lab_case_id = $1 ORDER BY a.position`,
+      [id],
+    );
     const events = await tx.query(
       `SELECT e.id, e.from_status, e.to_status, e.round, e.reason, e.note, e.due_date, e.rx_sha256, e.at, s.display_name AS actor_name
          FROM lab_case_event e JOIN staff_member s ON s.id = e.actor_id WHERE e.lab_case_id = $1 ORDER BY e.at, e.id`,
@@ -157,7 +167,7 @@ export class LabService {
       "SELECT id, chart_number, concat_ws(' ', coalesce(preferred_name, legal_given_name), legal_family_name) AS name FROM patient WHERE id = $1",
       [(full as { patient_id: string }).patient_id],
     );
-    return { ...full, ...withFlags(head!, this.today()), case_number: caseNumber(head!.seq as number), items, events, lab, patient };
+    return { ...full, ...withFlags(head!, this.today()), case_number: caseNumber(head!.seq as number), items, attachments, events, lab, patient };
   }
 
   /**
@@ -169,7 +179,7 @@ export class LabService {
     await this.access.require(actor, 'lab_case.manage', { action: 'lab_case.reference', patientId });
     return this.db.tx(this.scope(actor), async (tx) => {
       await this.access.requirePatientAccess(tx, actor, patientId, 'lab_case.reference');
-      const [labs, prescribers, appointments, procedures] = await Promise.all([
+      const [labs, prescribers, appointments, procedures, images] = await Promise.all([
         tx.query('SELECT id, name FROM dental_lab WHERE active ORDER BY name'),
         tx.query(
           `SELECT id, display_name FROM staff_member
@@ -186,8 +196,13 @@ export class LabService {
             WHERE p.patient_id = $1 AND NOT p.entered_in_error ORDER BY p.started_at DESC LIMIT 20`,
           [patientId],
         ),
+        tx.query(
+          `SELECT m.id AS media_id, m.modality, m.content_type, m.acquired_at, ${TEETH_OF_MEDIA} AS teeth
+             FROM media_object m WHERE m.patient_id = $1 AND NOT m.entered_in_error ORDER BY m.acquired_at DESC LIMIT 60`,
+          [patientId],
+        ),
       ]);
-      return { labs, prescribers, appointments, procedures };
+      return { labs, prescribers, appointments, procedures, images };
     });
   }
 
@@ -215,8 +230,11 @@ export class LabService {
         [actor.orgId, seq, req.patientId, req.locationId, req.labId, req.prescribingDentistId, req.impressionType, req.scanReference || null, req.enclosures, req.instructions || null, req.dueDate, actor.staffId],
       );
       await this.writeItems(tx, actor, r!.id, req.patientId, req.items);
+      await this.writeAttachments(tx, actor, r!.id, req.patientId, req.attachmentIds);
       await this.event(tx, actor, r!.id, null, 'DRAFT', 0, {});
-      await this.audit.record(tx, actor, { action: 'lab_case.create', objectType: 'lab_case', objectId: r!.id, patientId: req.patientId, details: { units: req.items.length } });
+      await this.audit.record(tx, actor, {
+        action: 'lab_case.create', objectType: 'lab_case', objectId: r!.id, patientId: req.patientId, details: { units: req.items.length, attachments: req.attachmentIds.length },
+      });
       return { id: r!.id, caseNumber: caseNumber(seq) };
     });
   }
@@ -234,7 +252,9 @@ export class LabService {
         [id, req.labId, req.prescribingDentistId, req.impressionType, req.scanReference || null, req.enclosures, req.instructions || null, req.dueDate, actor.staffId],
       );
       await tx.query('DELETE FROM lab_case_item WHERE lab_case_id = $1', [id]);
+      await tx.query('DELETE FROM lab_case_attachment WHERE lab_case_id = $1', [id]);
       await this.writeItems(tx, actor, id, c.patient_id, req.items);
+      await this.writeAttachments(tx, actor, id, c.patient_id, req.attachmentIds);
       await this.audit.record(tx, actor, { action: 'lab_case.update', objectType: 'lab_case', objectId: id, patientId: c.patient_id, details: { fromVersion: c.version } });
       return { id, version: c.version + 1 };
     });
@@ -247,6 +267,17 @@ export class LabService {
     const dentist = await tx.one<{ privileges: string[] }>('SELECT privileges FROM staff_member WHERE id = $1 AND active', [req.prescribingDentistId]);
     // Authority comes from privileges, never a job title: the prescriber must be able to authorize lab work.
     if (!dentist || !dentist.privileges.includes('lab_case.authorize')) throw invalid('The prescribing dentist must be able to authorize lab prescriptions');
+  }
+
+  /** Chart images sent with the case: the patient's own, not marked entered in error. */
+  private async writeAttachments(tx: Tx, actor: Actor, caseId: string, patientId: string, mediaIds: string[]) {
+    if (mediaIds.length === 0) return;
+    const ok = await tx.query<{ id: string }>('SELECT id FROM media_object WHERE id = ANY($1) AND patient_id = $2 AND NOT entered_in_error', [mediaIds, patientId]);
+    if (ok.length !== mediaIds.length) throw invalid('Attach only this patient’s own chart images', { issues: [{ path: 'attachmentIds', message: 'Not one of this patient’s images' }] });
+    let pos = 1;
+    for (const mediaId of mediaIds) {
+      await tx.query('INSERT INTO lab_case_attachment (org_id, lab_case_id, position, media_object_id, added_by) VALUES ($1,$2,$3,$4,$5)', [actor.orgId, caseId, pos++, mediaId, actor.staffId]);
+    }
   }
 
   private async writeItems(tx: Tx, actor: Actor, caseId: string, patientId: string, items: LabRxRequest['items']) {
@@ -397,6 +428,11 @@ export class LabService {
     const lab = await tx.one<{ name: string }>('SELECT name FROM dental_lab WHERE id = $1', [c!.lab_id]);
     const dentist = await tx.one<{ display_name: string }>('SELECT display_name FROM staff_member WHERE id = $1', [c!.prescribing_dentist_id]);
     const items = await tx.query('SELECT position, restoration, tooth_universal, arch, material, shade, note FROM lab_case_item WHERE lab_case_id = $1 ORDER BY position', [id]);
+    const attachments = await tx.query<{ position: number; mediaId: string; modality: string; acquiredAt: Date; sha256: string }>(
+      `SELECT a.position, m.id AS "mediaId", m.modality, m.acquired_at AS "acquiredAt", m.sha256
+         FROM lab_case_attachment a JOIN media_object m ON m.id = a.media_object_id WHERE a.lab_case_id = $1 ORDER BY a.position`,
+      [id],
+    );
     return {
       caseNumber: caseNumber(c!.seq),
       patientId: c!.patient_id,
@@ -408,6 +444,8 @@ export class LabService {
       instructions: c!.instructions,
       dueDate: c!.due_date,
       items,
+      // Each image by id and content digest, so the frozen Rx pins the exact files sent.
+      attachments: attachments.map((a) => ({ ...a, acquiredAt: new Date(a.acquiredAt).toISOString() })),
     };
   }
 

@@ -227,6 +227,12 @@ procedure (the crown prep, the seat) is still recorded and signed in its visit a
   night guard), with material and shade. Units point at the patient's tooth instance; the tooth number is stored for
   display only. An implant crown needs an implant on file at that site. Each tooth once per case; a digital scan has
   no physical impression.
+- **Chart images** (`lab_case_attachment`): x-rays and photos already in the patient's chart can be attached to a
+  draft, in order. Only the case patient's own images that aren't marked entered in error; the database checks the
+  same. They are fixed with the prescription when it's sent: the frozen Rx lists each by image id and its SHA-256, so
+  the record shows exactly which files went with the case. The printed Rx lists them (type, date, teeth); the screen
+  also shows thumbnails. An image marked entered in error after sending stays listed with a ⚠ note. Nothing is
+  transmitted to the lab from the app.
 - **States**: Draft → At the lab (SENT) → Back from lab (RECEIVED) → Seated, with Cancelled from any open state. From
   Back from lab a dentist can send the case back for an adjustment, a remake or the next stage (try-in), which starts
   a new round with its own due date and instructions.
@@ -264,7 +270,7 @@ procedure (the crown prep, the seat) is still recorded and signed in its visit a
   records, telehealth billing codes, real state rules (each needs legal review), an approved triage protocol.
 - Phase 6 still to come: DICOM/CBCT viewing.
   Lab case gaps: electronic case submission and status updates from a lab portal (each lab is a new vendor that
-  needs a BAA and an adapter), sending scan files with the case, lab invoices and remake cost tracking, linking units
+  needs a BAA and an adapter), sending scan files or the attached images to the lab electronically, lab invoices and remake cost tracking, linking units
   to plan items in the form (the API accepts `plannedProcedureId`), and per-unit status for multi-unit cases. Flags
   compare the seat appointment's UTC date, so a late-evening appointment can be a day off.
   Oral surgery gaps: sedation and general anesthesia records (monitoring, vitals, recovery), consent linked to the

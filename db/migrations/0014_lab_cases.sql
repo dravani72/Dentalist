@@ -4,6 +4,7 @@
 --   lab_case        one case for one patient: the prescription (lab, prescribing dentist,
 --                   impression, enclosures, instructions, due date) and where it stands
 --   lab_case_item   the units on the prescription: a tooth or an arch, what is made, material, shade
+--   lab_case_attachment  chart images (x-rays, photos) sent with the case; fixed once sent
 --   lab_case_event  append-only history of every status change, with the frozen prescription
 --                   and its SHA-256 on every send
 --
@@ -98,6 +99,21 @@ CREATE TABLE lab_case_item (
 SELECT enable_tenant_rls('lab_case_item');
 CREATE INDEX lab_case_item_case ON lab_case_item (lab_case_id);
 
+CREATE TABLE lab_case_attachment (
+  id               uuid PRIMARY KEY DEFAULT uuid_v7(),
+  org_id           uuid NOT NULL,
+  lab_case_id      uuid NOT NULL,
+  position         smallint NOT NULL,
+  media_object_id  uuid NOT NULL,
+  added_by         uuid NOT NULL,
+  added_at         timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (lab_case_id, position),
+  UNIQUE (lab_case_id, media_object_id),
+  FOREIGN KEY (org_id, lab_case_id) REFERENCES lab_case(org_id, id)
+);
+SELECT enable_tenant_rls('lab_case_attachment');
+CREATE INDEX lab_case_attachment_case ON lab_case_attachment (lab_case_id);
+
 CREATE TABLE lab_case_event (
   id            uuid PRIMARY KEY DEFAULT uuid_v7(),
   org_id        uuid NOT NULL,
@@ -170,6 +186,25 @@ BEGIN
 END $$;
 CREATE TRIGGER lab_case_item_guard BEFORE INSERT OR UPDATE OR DELETE ON lab_case_item FOR EACH ROW EXECUTE FUNCTION lab_case_item_guard();
 
+-- Attachments follow the same rule, and must be one of the case patient's own images that is
+-- not marked entered in error.
+CREATE OR REPLACE FUNCTION lab_case_attachment_guard() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_case lab_case%ROWTYPE;
+BEGIN
+  SELECT * INTO v_case FROM lab_case WHERE id = CASE WHEN TG_OP = 'DELETE' THEN OLD.lab_case_id ELSE NEW.lab_case_id END;
+  IF v_case.status <> 'DRAFT' THEN
+    RAISE EXCEPTION 'this prescription was sent and is immutable' USING ERRCODE = '42501';
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  IF NOT EXISTS (SELECT 1 FROM media_object WHERE id = NEW.media_object_id AND patient_id = v_case.patient_id AND NOT entered_in_error) THEN
+    RAISE EXCEPTION 'an attachment is one of the case patient''s chart images' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER lab_case_attachment_guard BEFORE INSERT OR UPDATE OR DELETE ON lab_case_attachment FOR EACH ROW EXECUTE FUNCTION lab_case_attachment_guard();
+
 -- History is append-only.
 CREATE OR REPLACE FUNCTION lab_case_event_append_only() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -179,5 +214,5 @@ END $$;
 CREATE TRIGGER lab_case_event_append_only BEFORE UPDATE OR DELETE ON lab_case_event FOR EACH ROW EXECUTE FUNCTION lab_case_event_append_only();
 
 GRANT SELECT, INSERT, UPDATE ON dental_lab, lab_case TO teeth_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON lab_case_item TO teeth_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON lab_case_item, lab_case_attachment TO teeth_app;
 GRANT SELECT, INSERT ON lab_case_event TO teeth_app;

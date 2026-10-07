@@ -384,12 +384,12 @@ async function main() {
   const crownLab = await labs.saveLab(jane, null, { name: 'Synthetic Crown & Bridge Lab', phone: '555-0140', email: 'cases@crownbridge.example.test', address: '12 Kiln Road, Springfield', active: true });
   const applianceLab = await labs.saveLab(jane, null, { name: 'Synthetic Appliance Studio', phone: '555-0155', email: 'orders@appliance.example.test', active: true });
   const inDaysDate = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
-  const labCase = (patientId: string, prescriber: Actor, labId: string, impression: 'digital_scan' | 'conventional', items: { restoration: 'crown' | 'pontic' | 'bridge_retainer' | 'night_guard'; tooth?: string; arch?: 'upper' | 'lower'; material: 'zirconia' | 'lithium_disilicate' | 'pfm' | 'acrylic'; shade?: string }[], instructions: string) =>
+  const labCase = (patientId: string, prescriber: Actor, labId: string, impression: 'digital_scan' | 'conventional', items: { restoration: 'crown' | 'pontic' | 'bridge_retainer' | 'night_guard'; tooth?: string; arch?: 'upper' | 'lower'; material: 'zirconia' | 'lithium_disilicate' | 'pfm' | 'acrylic'; shade?: string }[], instructions: string, attachmentIds: string[] = []) =>
     labs.create(frank, {
       patientId, locationId: maple.locationId, labId, prescribingDentistId: prescriber.staffId, impressionType: impression,
       scanReference: impression === 'digital_scan' ? `SCAN-${Math.floor(Math.random() * 9000 + 1000)}` : undefined,
       enclosures: impression === 'digital_scan' ? ['photos'] : ['impression', 'opposing_model', 'bite_registration'], instructions, dueDate: inDaysDate(10),
-      items: items.map((i) => ({ ...i, shade: i.shade, material: i.material })),
+      items: items.map((i) => ({ ...i, shade: i.shade, material: i.material })), attachmentIds,
     });
   const version = async (id: string) => (await owner.query<{ version: number }>('SELECT version FROM lab_case WHERE id = $1', [id])).rows[0]!.version;
   /** Seed only: moves a case's dates and the matching history entries back in time. */
@@ -407,7 +407,13 @@ async function main() {
     }
     await owner.query('ALTER TABLE lab_case_event ENABLE TRIGGER lab_case_event_append_only');
   }
-  const jordanCrown = await labCase(jordan.id, amy, crownLab.id!, 'conventional', [{ restoration: 'crown', tooth: '19', material: 'lithium_disilicate', shade: 'A2' }], 'Endodontically treated tooth; build-up in place. Light occlusion.');
+  // The x-rays of #19 taken before the crown was made go with the case.
+  const jordanXrays19 = (await owner.query<{ id: string }>(
+    `SELECT m.id FROM media_object m JOIN tooth_instance t ON t.id = ANY(m.tooth_instance_ids)
+      WHERE m.patient_id = $1 AND t.dental_position_id = 'P19' AND m.acquired_at < '2021-03-01' ORDER BY m.acquired_at`,
+    [jordan.id],
+  )).rows.map((r) => r.id);
+  const jordanCrown = await labCase(jordan.id, amy, crownLab.id!, 'conventional', [{ restoration: 'crown', tooth: '19', material: 'lithium_disilicate', shade: 'A2' }], 'Endodontically treated tooth; build-up in place. Light occlusion.', jordanXrays19);
   await labs.send(amy, jordanCrown.id, 1);
   await labs.receive(frank, jordanCrown.id, await version(jordanCrown.id), '2021-03-12');
   await labs.seat(jane, jordanCrown.id, await version(jordanCrown.id), '2021-03-17', crown19Seated, 'Seated with RMGI cement.');

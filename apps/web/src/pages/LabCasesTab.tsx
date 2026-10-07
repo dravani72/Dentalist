@@ -15,6 +15,7 @@ import {
   type LabCaseFlag,
 } from '@teeth/shared';
 import { Callout } from '../components/Callout';
+import { Xray } from '../components/Xray';
 import { api, errorText } from '../lib/api';
 import { conceptLabel, fmtDate, fmtStamp, fmtTime, humanize } from '../lib/format';
 import { useSession } from '../lib/session';
@@ -65,6 +66,29 @@ interface LabCaseItem {
   note: string | null;
 }
 
+interface LabImage {
+  media_id: string;
+  modality: string;
+  content_type: string;
+  acquired_at: string;
+  teeth: string[];
+}
+
+interface LabAttachment extends LabImage {
+  position: number;
+  sha256: string;
+  entered_in_error: boolean;
+}
+
+/** "Periapical x-ray, Mar 1, 2021, #19 #20": what the image is, never the patient. */
+const imageLabel = (m: LabImage) => {
+  const teeth = m.teeth
+    .map((code) => positionByCode(code)?.universal)
+    .filter((t): t is string => !!t)
+    .sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+  return `${labLabel(m.modality)}, ${fmtDate(m.acquired_at)}${teeth.length ? `, ${teeth.map((t) => `#${t}`).join(' ')}` : ''}`;
+};
+
 interface LabCaseEvent {
   id: string;
   from_status: string | null;
@@ -88,6 +112,7 @@ interface LabCaseDetail extends LabCaseRow {
   cancel_reason: string | null;
   seated_procedure_id: string | null;
   items: LabCaseItem[];
+  attachments: LabAttachment[];
   events: LabCaseEvent[];
   lab: { id: string; name: string; phone: string | null; email: string | null; address: string | null };
   patient: { id: string; chart_number: string; name: string };
@@ -98,6 +123,7 @@ interface Reference {
   prescribers: { id: string; display_name: string }[];
   appointments: { id: string; start_at: string; location_id: string; appointment_type: string }[];
   procedures: { id: string; procedure_concept: string; status: string; started_at: string; dental_position_id: string | null }[];
+  images: LabImage[];
 }
 
 // ---------------------------------------------------------------- shared bits (also used by the practice list)
@@ -380,6 +406,37 @@ function RxSheet({ c }: { c: LabCaseDetail }) {
           <b>Instructions:</b> {c.instructions}
         </p>
       )}
+      <div className="rx-images">
+        <b>Images sent with the case</b>
+        {c.attachments.length === 0 ? (
+          <span className="muted"> None</span>
+        ) : (
+          <ol>
+            {c.attachments.map((a) => (
+              <li key={a.media_id}>
+                {imageLabel(a)} <span className="mono small muted">· SHA-256 {a.sha256.slice(0, 12)}…</span>
+                {a.entered_in_error && (
+                  <span className="pill lab-flag">
+                    <span aria-hidden="true">⚠</span> Since marked entered in error in the chart
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+        {c.attachments.length > 0 && (
+          <div className="lab-thumbs no-print">
+            {c.attachments.map((a) => (
+              <figure key={a.media_id}>
+                <Xray mediaId={a.media_id} alt={imageLabel(a)} thumb />
+                <figcaption className="small">
+                  {a.position}. {labLabel(a.modality)}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
+      </div>
       <p className="small rx-authorized">
         {c.authorized_at ? (
           <>
@@ -659,6 +716,7 @@ function RxForm({ patientId, patient, existing, onDone }: { patientId: string; p
   const [enclosures, setEnclosures] = useState<string[]>(existing?.enclosures ?? []);
   const [instructions, setInstructions] = useState(existing?.instructions ?? '');
   const [due, setDue] = useState(existing?.due_date ?? inDays(10));
+  const [attachmentIds, setAttachmentIds] = useState<string[]>(existing?.attachments.filter((a) => !a.entered_in_error).map((a) => a.media_id) ?? []);
   const [items, setItems] = useState<ItemForm[]>(
     existing?.items.map((i) => ({ restoration: i.restoration, tooth: i.tooth_universal ?? '', arch: i.arch ?? '', material: i.material ?? '', shade: i.shade ?? '', note: i.note ?? '' })) ?? [blankItem()],
   );
@@ -680,6 +738,7 @@ function RxForm({ patientId, patient, existing, onDone }: { patientId: string; p
         enclosures,
         instructions: instructions || undefined,
         dueDate: due || null,
+        attachmentIds,
         items: items.map((i) => {
           const arch = ARCH_RESTORATIONS.includes(i.restoration);
           return {
@@ -867,6 +926,31 @@ function RxForm({ patientId, patient, existing, onDone }: { patientId: string; p
             Add a unit
           </button>
         )}
+      </fieldset>
+
+      <fieldset className="lab-attach">
+        <legend className="lbl">Chart images to send ({attachmentIds.length} chosen)</legend>
+        {ref.data && ref.data.images.length === 0 && <p className="muted small">No x-rays or photos in this patient’s chart.</p>}
+        <div className="lab-attach-grid">
+          {ref.data?.images.map((m) => {
+            const n = attachmentIds.indexOf(m.media_id);
+            return (
+              <label key={m.media_id} className={`lab-attach-pick${n >= 0 ? ' on' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={n >= 0}
+                  onChange={() => setAttachmentIds(n >= 0 ? attachmentIds.filter((x) => x !== m.media_id) : [...attachmentIds, m.media_id])}
+                />
+                <Xray mediaId={m.media_id} alt={imageLabel(m)} thumb />
+                <span className="small">
+                  {n >= 0 && <b aria-hidden="true">✓ {n + 1}. </b>}
+                  {imageLabel(m)}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="hint">Chosen images are listed on the prescription in this order and fixed with it when it’s sent.</p>
       </fieldset>
 
       <label className="field">

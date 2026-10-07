@@ -66,6 +66,15 @@ export const LAB_LABELS: Record<string, string> = {
   adjustment: 'Adjustment',
   remake: 'Remake',
   next_stage: 'Next stage (try-in)',
+  bitewing: 'Bitewing x-ray',
+  periapical: 'Periapical x-ray',
+  panoramic: 'Panoramic x-ray',
+  fmx: 'Full-mouth x-rays',
+  cephalometric: 'Cephalometric x-ray',
+  cbct: 'CBCT scan',
+  intraoral_photo: 'Intraoral photo',
+  extraoral_photo: 'Extraoral photo',
+  document: 'Document',
   upper: 'Upper arch',
   lower: 'Lower arch',
 };
@@ -121,11 +130,14 @@ export const LabRxRequest = z
     instructions: text(2000),
     dueDate: isoDate.nullable().default(null),
     items: z.array(LabCaseItemRequest).min(1).max(16),
+    /** Chart images (x-rays, photos) of the same patient sent with the case. */
+    attachmentIds: z.array(z.string().uuid()).max(20).default([]),
   })
   .superRefine((r, ctx) => {
     if (new Set(r.enclosures).size !== r.enclosures.length) ctx.addIssue({ code: 'custom', path: ['enclosures'], message: 'Each enclosure once' });
     const teeth = r.items.filter((i) => i.tooth).map((i) => i.tooth);
     if (new Set(teeth).size !== teeth.length) ctx.addIssue({ code: 'custom', path: ['items'], message: 'Each tooth once per case' });
+    if (new Set(r.attachmentIds).size !== r.attachmentIds.length) ctx.addIssue({ code: 'custom', path: ['attachmentIds'], message: 'Each image once' });
     if (r.impressionType === 'digital_scan' && r.enclosures.includes('impression')) ctx.addIssue({ code: 'custom', path: ['enclosures'], message: 'A digital scan has no physical impression' });
   });
 export type LabRxRequest = z.infer<typeof LabRxRequest>;
