@@ -27,6 +27,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Telehealth triage: cases, intake, jurisdiction eligibility, sessions, remote findings, signing evidence | 0009; `apps/api/src/telehealth/*` (`RtcAdapter`, `FakeRtcAdapter`); `packages/shared/src/telehealth.ts`; `config/jurisdiction_registry.json`; `apps/web/src/pages/telehealth/*`, portal `telehealth.tsx`; details in `telehealth.md` |
 | Periodontal charting (Phase 6): six-site probing, recession, CAL, BOP, suppuration, plaque, calculus, furcation, mobility, keratinized gingiva | 0010; `apps/api/src/charting/perio.service.ts`, `perio-rows.ts`, `entry-kinds.ts` (`perio`); `packages/shared/src/perio.ts`; `apps/web/src/pages/PerioTab.tsx`. See "Periodontal charting" below |
 | Endodontic charting (Phase 6): AAE-style pulpal and apical diagnosis, pulp and periapical tests with control teeth, canals of a root canal (working length, preparation, obturation) | 0011; `apps/api/src/charting/endo.service.ts`, `endo-rows.ts`, `entry-kinds.ts` (`endo_dx`, `endo_test`, `endo_canal`); `packages/shared/src/endo.ts`; `apps/web/src/pages/EndoTab.tsx`. See "Endodontic charting" below |
+| Implant records (Phase 6): implant as a persistent device (manufacturer, catalog, lot/serial, size, torque, ISQ, grafts) and its later steps (uncovery, abutment, restoration, checks, complications, removal) | 0012; `apps/api/src/charting/implant.service.ts`, `implant-rows.ts`, `entry-kinds.ts` (`implant`, `implant_event`); `packages/shared/src/implant.ts`; `apps/web/src/pages/ImplantsTab.tsx`. See "Implant records" below |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
 ## Deliberate deviations
@@ -148,6 +149,37 @@ and the canals of each root canal.
 - The seed gives Jordan's 2021 root canal on #19 its workup (tests on #19 with #20 as control, diagnosis) and three
   obturated canals with working lengths.
 
+## Implant records
+
+The **Implants** tab on a patient record shows one card per implant: what was placed, how, and every step since.
+
+- **An implant is a device, not a procedure.** The placement record (`implant`) is a chart entry of the visit where
+  it was placed. It holds the device's identity (manufacturer, product family, catalog number, lot and/or serial,
+  which the database requires at least one of), its size (diameter 2.5-7 mm, length 5-20 mm in 0.5 mm steps),
+  surface, platform, insertion torque, ISQ, bone quality, timing, healing protocol, and the graft and membrane with
+  their lots. It is recorded against an implant placement procedure at the same site in the same visit.
+- **The site is an implant tooth instance.** Placement creates (or reuses) a `tooth_instance` of kind `implant` at
+  the dental position, so findings and probing can later sit on the implant rather than the extracted tooth. One
+  device at a site at a time: a second placement there is refused until the first one's removal is recorded.
+- **Later steps are events** (`implant_event`) in the visit where they happen: second-stage uncovery, healing
+  abutment, abutment, restoration (type and screw or cement retention), stability check (ISQ), follow-up (bone loss),
+  complication (named from a fixed list) and removal (with a reason). The database checks which details go with
+  which step. Removal ends the device; nothing more can be recorded on it.
+- **`device_id` is the device's lasting identity**: the id of its first placement record, set by the database and
+  carried by every amended version and every event, so a device's history survives amendments. The card shows the
+  stage reached (healing, uncovered, abutment placed, restored, removed) and the ISQ trend.
+- **Completion rule.** A device record stands in for the free-text manufacturer, lot, diameter and length fields
+  when the implant placement procedure is marked performed.
+- **Who records**: `procedure.complete` (dentists, hygienists, assistants) for placements and events; edits and voids
+  go through the generic entry routes (`entries/implants|implant-events`) with the same checks; the kind of step is
+  fixed once recorded. In person only.
+- **Colorblind-safe**: the stage is written out with a mark (◷ healing, ◎ uncovered, ▣ abutment, ✓ restored,
+  ✕ removed) and a distinct border; complications and removals in the history carry ⚠ with a wavy underline; a
+  removed implant's card has a dashed border and its title struck through.
+- The odontogram now draws a placed implant at a site where the tooth was extracted, instead of the extraction X.
+- The seed gives Hector Alvarez an immediate implant at #30 (2024, after a sectioned extraction, with graft and
+  membrane), uncovery and a screw-retained crown four months later, and a 2025 follow-up.
+
 ## Not built yet
 
 - Portal pieces still missing: online payment (needs a payment processor choice), referral and document downloads,
@@ -158,7 +190,10 @@ and the canals of each root canal.
   primary payment), claim status inquiry (276/277), statements by mail, payment plans, collections.
 - Telehealth gaps: LiveKit audio egress into the encrypted media store, transcription, the replay buffer, referral
   records, telehealth billing codes, real state rules (each needs legal review), an approved triage protocol.
-- Phase 6 still to come: implants as device records, oral surgery, lab cases, DICOM/CBCT viewing.
+- Phase 6 still to come: oral surgery, lab cases, DICOM/CBCT viewing.
+  Implant gaps: UDI barcode scanning and a device-recall search across patients, probing on implant sites in the
+  perio chart (the implant tooth instances now exist), drawing the implant restoration on the odontogram from
+  implant events, and implant-supported bridges spanning several sites.
   Endo gaps: radiographic working-length films linked to a canal, retreatment and apicoectomy detail, a referral
   letter to an endodontist, and recording on primary teeth from the Endo tab (the API accepts them; the tooth list
   shows permanent teeth only).

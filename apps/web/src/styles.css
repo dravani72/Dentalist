@@ -360,3 +360,17 @@ p.warn { background: var(--warn-bg); border: 1.5px dashed var(--c-planned); bord
 .endo-rct h3 { margin: 0; font-size: 15px; }
 .endo-wl { margin: 6px 0; max-width: 460px; color: var(--fg); }
 .endo-wl svg { width: 100%; height: auto; display: block; }
+
+/* ---------------------------------------------------------------- implants */
+.implant-summary { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.implant-card.removed { border-style: dashed; }
+.implant-card.removed h2 { text-decoration: line-through; text-decoration-thickness: 1px; }
+.implant-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 16px; margin: 8px 0; }
+.implant-facts dt { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.implant-facts dd { margin: 0; }
+.implant-timeline { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 4px; }
+.implant-timeline li.implant-problem b { text-decoration: underline; text-decoration-style: wavy; text-underline-offset: 3px; }
+.pill.implant-stage.st-healing { color: var(--muted); border-style: dashed; }
+.pill.implant-stage.st-uncovered, .pill.implant-stage.st-abutment { color: var(--c-planned); border-style: dotted; }
+.pill.implant-stage.st-restored { color: var(--c-completed); }
+.pill.implant-stage.st-removed { color: var(--danger); border-style: double; border-width: 3px; }

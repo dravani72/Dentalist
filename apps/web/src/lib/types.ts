@@ -77,6 +77,48 @@ export interface EntrySet {
   endo_dx: EndoDiagnosisEntry[];
   endo_test: EndoTestEntry[];
   endo_canal: EndoCanalEntry[];
+  implant: ImplantEntry[];
+  implant_event: ImplantEventEntry[];
+}
+
+/** An implant placement record. device_id is the device's lasting identity across amended versions. */
+export interface ImplantEntry extends Entry {
+  device_id: string;
+  procedure_occurrence_id: string;
+  manufacturer: string;
+  product_family: string | null;
+  catalog_number: string | null;
+  lot_number: string | null;
+  serial_number: string | null;
+  diameter_mm: string;
+  length_mm: string;
+  surface: string | null;
+  platform: string | null;
+  insertion_torque_ncm: number | null;
+  isq: number | null;
+  bone_quality: string | null;
+  timing: string | null;
+  healing: string;
+  graft_material: string | null;
+  graft_product: string | null;
+  graft_lot: string | null;
+  membrane_product: string | null;
+  membrane_lot: string | null;
+}
+
+/** A later step on an implant, recorded in the visit where it happened. */
+export interface ImplantEventEntry extends Entry {
+  device_id: string;
+  event_type: string;
+  isq: number | null;
+  abutment_manufacturer: string | null;
+  abutment_catalog_number: string | null;
+  abutment_lot: string | null;
+  abutment_torque_ncm: number | null;
+  restoration_type: string | null;
+  retention: string | null;
+  complication: string | null;
+  bone_loss_mm: string | null;
 }
 
 /** Pulpal and apical diagnosis of one tooth (AAE terminology, our own keys). */

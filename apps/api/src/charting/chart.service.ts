@@ -33,6 +33,7 @@ import { suggestBillingCode } from '../billing/codes';
 import { caseForEncounter } from '../telehealth/hooks';
 import { copyPerioMeasurements } from './perio-rows';
 import { checkEndoEdit, liveCanals } from './endo-rows';
+import { checkImplantEdit, placedImplant } from './implant-rows';
 
 export interface EncounterRow {
   id: string;
@@ -136,7 +137,7 @@ export class ChartService {
   }
 
   async encounterEntries(tx: Tx, encounterId: string) {
-    const kinds: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'note', 'anesthetic', 'material', 'media', 'perio', 'endo_dx', 'endo_test', 'endo_canal'];
+    const kinds: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'note', 'anesthetic', 'material', 'media', 'perio', 'endo_dx', 'endo_test', 'endo_canal', 'implant', 'implant_event'];
     const out: Record<string, unknown[]> = {};
     for (const k of kinds) {
       out[k] = await tx.query(entrySelect(k, effectiveWhere(k)) + ' ORDER BY e.recorded_at', [encounterId]);
@@ -559,6 +560,16 @@ export class ChartService {
             details.obturation ||= c.obturation || null;
           }
         }
+        if (p.procedure_concept === 'implant_placement') {
+          // A device record, when there is one, stands in for the free-text device fields.
+          const device = await placedImplant(tx, id);
+          if (device) {
+            details.implant_manufacturer ||= device.manufacturer;
+            details.implant_lot ||= device.lot_number ?? device.serial_number;
+            details.implant_diameter_mm ??= Number(device.diameter_mm);
+            details.implant_length_mm ??= Number(device.length_mm);
+          }
+        }
         const missing = missingForCompletion(procedureConcept(p.procedure_concept)!, p.surfaces, details);
         if (missing.length) throw invalid('Complete the required fields first', { missing });
       }
@@ -610,6 +621,7 @@ export class ChartService {
     }
     if (kind === 'procedure' && 'concept_details' in changes) throw invalid('Use details to change procedure annotation');
     if (kind === 'endo_dx' || kind === 'endo_test' || kind === 'endo_canal') return checkEndoEdit(tx, kind, row, out);
+    if (kind === 'implant' || kind === 'implant_event') return checkImplantEdit(kind, row, out);
     return out;
   }
 }
@@ -625,6 +637,8 @@ function privilegeFor(kind: EntryKind) {
     case 'anesthetic':
     case 'material':
     case 'endo_canal':
+    case 'implant':
+    case 'implant_event':
       return 'procedure.complete' as const;
     case 'media':
       return 'media.upload' as const;
