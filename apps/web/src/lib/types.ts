@@ -43,7 +43,7 @@ export interface PatientDetail {
   medications: (HistoryItem & { medication: string; dose: string | null; frequency: string | null; is_anticoagulant: boolean })[];
   conditions: (HistoryItem & { condition: string })[];
   lastHistoryReview: { reviewed_at: string; reviewed_by_name: string } | null;
-  pharmacies: { id: string; rank: string; pharmacy_id: string; name: string; address_line: string; city: string; state: string; zip: string; phone: string; open_24h: boolean }[];
+  pharmacies: { id: string; rank: string; pharmacy_id: string; name: string; address_line: string; city: string; state: string; zip: string; phone: string; open_24h: boolean; epcs_capable: boolean }[];
 }
 
 export interface Entry {
@@ -313,5 +313,20 @@ export interface Prescription {
   pharmacy_preference_id: string | null;
   prepared_by_name: string;
   signed_by_name: string | null;
+  signed_by: string | null;
   events: { status: string; detail: string | null; source: string; at: string }[] | null;
+  controlled_schedule: 'II' | 'III' | 'IV' | 'V' | null;
+  controlled_class: 'opioid' | 'benzodiazepine' | 'other' | null;
+  pdmp_reviewed_at: string | null;
+  /** Controlled, waiting: the open partner signing window, if any. */
+  epcs_session: { sessionId: string; expiresAt: string } | null;
+  /** Controlled, signed: evidence of the partner's two-factor signature. */
+  epcs_signature: { factors: string[]; signatureRef: string; finishedAt: string } | null;
+}
+
+export interface EpcsReadiness {
+  canSign: boolean;
+  schedules: string[];
+  states: string[];
+  missing: string[];
 }

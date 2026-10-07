@@ -166,7 +166,7 @@ export class PatientsService {
           [patientId],
         ),
         tx.query(
-          `SELECT pp.id, pp.rank, ph.id AS pharmacy_id, ph.name, ph.address_line, ph.city, ph.state, ph.zip, ph.phone, ph.open_24h
+          `SELECT pp.id, pp.rank, ph.id AS pharmacy_id, ph.name, ph.address_line, ph.city, ph.state, ph.zip, ph.phone, ph.open_24h, ph.epcs_capable
              FROM patient_pharmacy_preference pp JOIN pharmacy ph ON ph.id = pp.pharmacy_id
             WHERE pp.patient_id = $1 AND pp.active ORDER BY pp.rank`,
           [patientId],

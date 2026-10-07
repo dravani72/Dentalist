@@ -61,6 +61,7 @@ export const PRIVILEGE_GROUPS: { label: string; privileges: { key: Privilege; la
       { key: 'prescription.prepare', label: 'Prepare prescriptions' },
       { key: 'prescription.sign_noncontrolled', label: 'Sign prescriptions (needs a verified license)' },
       { key: 'prescription.sign_controlled', label: 'Sign controlled-substance prescriptions (needs a verified license and EPCS)' },
+      { key: 'epcs.manage_access', label: 'Approve who may sign controlled-substance prescriptions (one of two people)' },
     ],
   },
   {

@@ -23,6 +23,11 @@ import { ImagingService } from '../imaging/imaging.service';
 import { phantomSite30, syntheticCbct } from '../imaging/phantom';
 import { MediaService } from '../media/media.service';
 import { PrescribingService } from '../prescribing/prescribing.service';
+import { EpcsService } from '../prescribing/epcs.service';
+import { ERX_PARTNER } from '../prescribing/erx-partner';
+import { FakeErxPartner, SANDBOX_PIN } from '../prescribing/fake-erx-partner';
+import { StaffAdminService } from '../admin/staff-admin.service';
+import { randomUUID } from 'node:crypto';
 import { PortalStaffService } from '../portal/portal-staff.service';
 import { PortalAuthService } from '../portal/portal-auth.service';
 import { BillingService } from '../billing/billing.service';
@@ -498,6 +503,59 @@ async function main() {
     verificationNote: 'Daughter; patient signed the caregiver authorization form in the office',
   });
 
+  // ---------------------------------------------------------------- EPCS (controlled substances)
+  // Amy and Marcus Lee hold synthetic DEA registrations (format-valid numbers, not real ones), and
+  // Amy, Marcus and Pat are enrolled with the sandbox partner. Amy's access was proposed by Amy and
+  // approved by Pat with Pat's signing token; Marcus's waits for a second approver. Mei has a
+  // hydrocodone prescription Amy signed in the partner window; Priya has a triazolam draft for
+  // pre-visit sedation waiting for a prescriber.
+  const epcs = app.get(EpcsService);
+  const staffAdmin = app.get(StaffAdminService);
+  const sandbox = app.get(ERX_PARTNER) as FakeErxPartner;
+  await owner.query("UPDATE staff_member SET privileges = array_cat(privileges, '{prescription.sign_controlled,epcs.manage_access}') WHERE id = $1", [maple.staff.amy!.staffId]);
+  await owner.query("UPDATE staff_member SET privileges = array_cat(privileges, '{prescription.sign_controlled}') WHERE id = $1", [maple.staff.lee!.staffId]);
+  const pat = await scriptedActor(owner, maple, 'pat');
+  const amyEpcs = { ...amy, privileges: new Set([...amy.privileges, 'prescription.sign_controlled' as const, 'epcs.manage_access' as const]) };
+  const deaIds: Record<string, string> = {};
+  for (const [key, number] of [['amy', 'BJ1234563'], ['lee', 'BL7654329']] as const) {
+    const d = await epcs.addDeaRegistration(pat, maple.staff[key]!.staffId, { deaNumber: number, state: 'IL', schedules: ['II', 'III', 'IV', 'V'], expiresOn: '2028-06-30' });
+    await staffAdmin.verifyCredential(pat, d.id, { source: 'DEA registration validation lookup (synthetic)' });
+    deaIds[key] = d.id;
+  }
+  for (const key of ['amy', 'lee', 'pat']) {
+    const e = await epcs.enroll(pat, maple.staff[key]!.staffId);
+    sandbox.sandboxProveIdentity(e.partnerPrescriberId, 'verified');
+    sandbox.sandboxBindToken(e.partnerPrescriberId);
+    await epcs.refresh(pat, maple.staff[key]!.staffId);
+  }
+  const tokenFor = async (key: string) => {
+    const r = await owner.query('SELECT partner_prescriber_id FROM epcs_enrollment WHERE staff_member_id = $1', [maple.staff[key]!.staffId]);
+    return sandbox.sandboxTokenCode(r.rows[0].partner_prescriber_id)!;
+  };
+  const amyGrant = await epcs.proposeGrant(amyEpcs, { prescriberId: maple.staff.amy!.staffId, deaCredentialId: deaIds.amy!, schedules: ['II', 'III', 'IV', 'V'] });
+  const approval = await epcs.approveGrant(pat, amyGrant.id);
+  await sandbox.sandboxComplete(approval.session.sessionId, { pin: SANDBOX_PIN, tokenCode: await tokenFor('pat') });
+  await epcs.proposeGrant(amyEpcs, { prescriberId: maple.staff.lee!.staffId, deaCredentialId: deaIds.lee!, schedules: ['II', 'III', 'IV', 'V'] });
+
+  for (const p of [mei, priya]) {
+    await rx.setPreference(frank, p.id, { partnerPharmacyId: 'sbx-1001', rank: 'primary' });
+    await rx.setPreference(frank, p.id, { partnerPharmacyId: 'sbx-1003', rank: 'alternate' });
+  }
+  const meiPref = (await owner.query("SELECT id FROM patient_pharmacy_preference WHERE patient_id = $1 AND rank = 'primary' AND active", [mei.id])).rows[0].id as string;
+  const meiRx = await rx.createDraft(amyEpcs, {
+    patientId: mei.id, drugKey: 'hydrocodone-apap-5-325-tab', drugDisplay: 'Hydrocodone/acetaminophen 5/325 mg tablet',
+    sig: 'Take 1 tablet by mouth every 6 hours as needed for severe pain not relieved by ibuprofen', quantity: 8, quantityUnit: 'tablet', daysSupply: 2, refills: 0,
+    substitutionAllowed: true, indication: 'Pain after surgical extraction', pharmacyPreferenceId: meiPref,
+  });
+  const started = await epcs.startSigning(amyEpcs, meiRx.id, { pharmacyPreferenceId: meiPref, acknowledgedAlertIds: meiRx.alerts.map((a) => a.id), idempotencyKey: randomUUID(), pdmpReviewed: true });
+  await sandbox.sandboxComplete(started.session!.sessionId, { pin: SANDBOX_PIN, tokenCode: await tokenFor('amy') });
+  await new Promise((r) => setTimeout(r, sandbox.callbackDelayMs + 200)); // the pharmacy's acknowledgement
+  await rx.createDraft(jane, {
+    patientId: priya.id, drugKey: 'triazolam-025-tab', drugDisplay: 'Triazolam 0.25 mg tablet',
+    sig: 'Take 1 tablet by mouth 1 hour before the dental appointment. Do not drive; bring an escort.', quantity: 1, quantityUnit: 'tablet', daysSupply: 1, refills: 0,
+    substitutionAllowed: true, indication: 'Dental anxiety: sedation before crown preparation',
+  });
+
   // Riverbend gets one patient so tenant isolation is visible in the demo.
   const omar = await scriptedActor(owner, river, 'omar');
   await patients.create(omar, { legalGivenName: 'Ada', legalFamilyName: 'Brennan', dateOfBirth: '1970-02-14', sexAtBirth: 'unknown', preferredLanguage: 'en', homeLocationId: river.locationId });
@@ -509,6 +567,7 @@ async function main() {
   console.log('Authenticator codes: the login screen shows the current code for synthetic users when DEV_TOOLS=1.');
   console.log('\nBilling: bea.carter@maple.example.test posts charges, claims and payments; codes and fees are the invented SYNTHETIC set.');
   console.log('Practice setup: pat.morgan@maple.example.test manages staff, privileges, licenses and working hours (Staff tab).');
+  console.log('EPCS: pat.morgan approves controlled-substance signing access (EPCS tab); Marcus Lee\'s access waits for approval. The sandbox partner PIN is ' + SANDBOX_PIN + '.');
   console.log('Patient portal (/#/portal, same password): jordan.rivera@patients.example.test (self), kasia.kowalski@patients.example.test (parent of Lena Kowalski, 12).');
   console.log('Emailed sign-in codes: the portal sign-in screen shows them for synthetic accounts when DEV_TOOLS=1.');
   console.log('\nTelehealth (Telehealth tab / portal "Video visit"): Jordan requests a visit and gives location ZZ (synthetic test state);');

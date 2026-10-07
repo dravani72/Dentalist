@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { PharmacyPreferenceRequest, PrescriptionDraftRequest, canonicalJson } from '@teeth/shared';
+import { PharmacyPreferenceRequest, PrescriptionDraftRequest, canonicalJson, controlledRuleViolations } from '@teeth/shared';
 import { z } from 'zod';
 import { APP_CONFIG, AppConfig } from '../config';
 import { EligibilityService } from '../telehealth/eligibility.service';
@@ -20,8 +20,8 @@ const WEBHOOK_WINDOW_SECONDS = 300;
  * transmission history; the partner moves the prescription. Staff may prepare drafts; only a
  * licensed prescriber with prescription.sign_noncontrolled, a fresh step-up and an
  * acknowledged screening can sign. Transmission runs from the outbox with an idempotency key.
- * Controlled substances stay disabled until the EPCS phase routes them through the partner's
- * certified flow.
+ * Controlled substances are classified by the partner's drug database when drafted and are
+ * signed only through the partner's certified EPCS window (EpcsService).
  */
 @Injectable()
 export class PrescribingService {
@@ -92,24 +92,37 @@ export class PrescribingService {
 
   async createDraft(actor: Actor, req: z.infer<typeof PrescriptionDraftRequest>) {
     await this.access.require(actor, 'prescription.prepare', { action: 'prescription.prepare', patientId: req.patientId });
-    if (req.controlledSchedule) {
-      await this.audit.recordDetached({ orgId: actor.orgId, actor }, { action: 'prescription.prepare', outcome: 'denied', patientId: req.patientId, details: { reason: 'epcs_not_enabled' } });
-      throw forbidden('Controlled-substance prescribing is not enabled yet. It will run through the partner’s certified EPCS flow.');
+    // Whether a drug is controlled is the partner's drug database's call, never the client's.
+    const drug = await this.partner.lookupDrug(req.drugKey);
+    const schedule = drug?.schedule ?? null;
+    const controlledClass = schedule ? (drug?.controlledClass ?? 'other') : null;
+    if (schedule) {
+      const violations = controlledRuleViolations({ schedule, controlledClass: controlledClass!, refills: req.refills, daysSupply: req.daysSupply });
+      if (violations.length) throw invalid(violations.map((v) => v.message).join(' '), { violations });
     }
     return this.db.tx(this.scope(actor), async (tx) => {
       await this.access.requirePatientAccess(tx, actor, req.patientId, 'prescription.prepare');
+      if (schedule && req.encounterId && (await caseForEncounter(tx, req.encounterId))) {
+        await this.audit.recordDetached({ orgId: actor.orgId, actor }, { action: 'prescription.prepare', outcome: 'denied', patientId: req.patientId, details: { reason: 'controlled_telehealth_prescribing_disabled' } });
+        throw forbidden('Controlled substances cannot be prescribed from a telehealth visit.', { reason: 'controlled_telehealth_prescribing_disabled' });
+      }
       const alerts = await this.screen(tx, req.patientId, req.drugKey);
       const r = await tx.one<{ id: string }>(
         `INSERT INTO prescription (org_id, patient_id, encounter_id, drug_key, drug_display, sig, quantity, quantity_unit, days_supply, refills,
-                                   substitution_allowed, indication, controlled_schedule, prepared_by, pharmacy_preference_id, alerts)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
+                                   substitution_allowed, indication, controlled_schedule, controlled_class, prepared_by, pharmacy_preference_id, alerts)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
         [actor.orgId, req.patientId, req.encounterId ?? null, req.drugKey, req.drugDisplay, req.sig, req.quantity, req.quantityUnit, req.daysSupply,
-         req.refills, req.substitutionAllowed, req.indication, null, actor.staffId, req.pharmacyPreferenceId ?? null, JSON.stringify(alerts)],
+         req.refills, req.substitutionAllowed, req.indication, schedule, controlledClass, actor.staffId, req.pharmacyPreferenceId ?? null, JSON.stringify(alerts)],
       );
       await tx.query("INSERT INTO prescription_event (org_id, prescription_id, status, source, actor_id) VALUES ($1,$2,'DRAFT','app',$3)", [actor.orgId, r!.id, actor.staffId]);
-      await this.audit.record(tx, actor, { action: 'prescription.prepare', objectType: 'prescription', objectId: r!.id, patientId: req.patientId, details: { alertCount: alerts.length } });
-      return { id: r!.id, alerts };
+      await this.audit.record(tx, actor, { action: 'prescription.prepare', objectType: 'prescription', objectId: r!.id, patientId: req.patientId, details: { alertCount: alerts.length, schedule } });
+      return { id: r!.id, alerts, controlledSchedule: schedule, controlledClass };
     });
+  }
+
+  /** Allergy and interaction screening at the partner, for drafting and for both signing paths. */
+  screenFor(tx: Tx, patientId: string, drugKey: string) {
+    return this.screen(tx, patientId, drugKey);
   }
 
   private async screen(tx: Tx, patientId: string, drugKey: string) {
@@ -140,7 +153,7 @@ export class PrescribingService {
       if (!rx) throw notFound('Prescription');
       const { homeLocationId } = await this.access.requirePatientAccess(tx, actor, rx.patient_id, 'prescription.sign');
       if (rx.status !== 'DRAFT') throw conflict(`Prescription is already ${rx.status.toLowerCase()}`);
-      if (rx.controlled_schedule) throw forbidden('Controlled-substance prescribing is not enabled');
+      if (rx.controlled_schedule) throw conflict('Controlled prescriptions are signed in the e-prescribing partner’s EPCS window.', { reason: 'epcs_signing_required' });
       const encounterLocation = rx.encounter_id ? (await tx.one<{ location_id: string }>('SELECT location_id FROM encounter WHERE id = $1', [rx.encounter_id]))?.location_id : undefined;
       const telehealthCase = rx.encounter_id ? await caseForEncounter(tx, rx.encounter_id) : undefined;
       let telehealthEvaluationId: string | null = null;
@@ -230,8 +243,14 @@ export class PrescribingService {
       if (!rx) throw notFound('Prescription');
       await this.access.require(actor, 'prescription.prepare', { action: 'prescription.cancel', patientId: rx.patient_id });
       await this.access.requirePatientAccess(tx, actor, rx.patient_id, 'prescription.cancel');
-      if (rx.status !== 'DRAFT') throw conflict('Only drafts can be cancelled here; a sent prescription needs a CancelRx through the partner');
+      if (rx.status !== 'DRAFT' && rx.status !== 'EPCS_PENDING') throw conflict('Only drafts can be cancelled here; a sent prescription needs a CancelRx through the partner');
       await tx.query("UPDATE prescription SET status = 'CANCELLED', version = version + 1 WHERE id = $1", [id]);
+      // A controlled prescription waiting for its partner signature: close any open signing window.
+      const open = await tx.query<{ id: string; partner_session_id: string }>("SELECT id, partner_session_id FROM epcs_session WHERE prescription_id = $1 AND status = 'open'", [id]);
+      for (const s of open) {
+        await tx.query("UPDATE epcs_session SET status = 'expired', finished_at = now(), detail = 'Prescription cancelled' WHERE id = $1", [s.id]);
+        await this.partner.cancelTwoFactorSession(s.partner_session_id).catch(() => undefined);
+      }
       await tx.query("INSERT INTO prescription_event (org_id, prescription_id, status, source, actor_id) VALUES ($1,$2,'CANCELLED','app',$3)", [actor.orgId, id, actor.staffId]);
       await this.audit.record(tx, actor, { action: 'prescription.cancel', objectType: 'prescription', objectId: id, patientId: rx.patient_id });
       return { id, status: 'CANCELLED' };
@@ -245,6 +264,11 @@ export class PrescribingService {
       const rows = await tx.query(
         `SELECT p.id, p.status, p.drug_display, p.sig, p.quantity, p.quantity_unit, p.days_supply, p.refills, p.indication, p.alerts,
                 p.prepared_at, p.signed_at, p.pharmacy_snapshot, p.pharmacy_preference_id, p.version,
+                p.controlled_schedule, p.controlled_class, p.pdmp_reviewed_at, p.signed_by,
+                (SELECT json_build_object('sessionId', s.partner_session_id, 'expiresAt', s.expires_at) FROM epcs_session s
+                  WHERE s.prescription_id = p.id AND s.status = 'open' AND s.expires_at > now() ORDER BY s.started_at DESC LIMIT 1) AS epcs_session,
+                (SELECT json_build_object('factors', s.factors, 'signatureRef', s.signature_ref, 'finishedAt', s.finished_at) FROM epcs_session s
+                  WHERE s.prescription_id = p.id AND s.status = 'completed' LIMIT 1) AS epcs_signature,
                 sp.display_name AS prepared_by_name, ss.display_name AS signed_by_name,
                 (SELECT json_agg(json_build_object('status', e.status, 'detail', e.detail, 'source', e.source, 'at', e.occurred_at) ORDER BY e.occurred_at)
                    FROM prescription_event e WHERE e.prescription_id = p.id) AS events

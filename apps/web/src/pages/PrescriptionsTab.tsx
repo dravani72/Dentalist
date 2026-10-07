@@ -1,10 +1,18 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RX_FAVORITES } from '@teeth/shared';
+import { CONTROLLED_FAVORITES, RX_FAVORITES, needsPdmpReview, scheduleMark } from '@teeth/shared';
 import { api, errorText } from '../lib/api';
 import { fmtStamp, humanize } from '../lib/format';
 import { useSession } from '../lib/session';
-import type { PatientDetail, Prescription } from '../lib/types';
+import type { EpcsReadiness, PatientDetail, Prescription } from '../lib/types';
+import { PartnerWindow } from '../components/PartnerWindow';
+import { Callout } from '../components/Callout';
+
+/** Ordinary favorites first, then the controlled ones; the server decides what is controlled. */
+const FAVORITES = [
+  ...RX_FAVORITES.map((f) => ({ ...f, daysSupply: 7, controlled: false })),
+  ...CONTROLLED_FAVORITES,
+];
 
 interface Pharmacy {
   partnerPharmacyId: string;
@@ -18,7 +26,7 @@ interface Pharmacy {
   mailOrder: boolean;
 }
 
-const IN_FLIGHT = ['QUEUED', 'TRANSMITTED', 'SENT'];
+const IN_FLIGHT = ['QUEUED', 'TRANSMITTED', 'SENT', 'EPCS_PENDING'];
 
 export function PrescriptionsTab({ patientId, d }: { patientId: string; d: PatientDetail }) {
   const { can } = useSession();
@@ -35,7 +43,10 @@ export function PrescriptionsTab({ patientId, d }: { patientId: string; d: Patie
       </div>
       <section className="panel">
         <h2>Prescriptions</h2>
-        <p className="hint">Sandbox e-prescribing partner. Controlled substances are disabled until the certified EPCS flow is added.</p>
+        <p className="hint">
+          Sandbox e-prescribing partner. Controlled substances (C-II to C-V) are signed in the partner’s certified EPCS window with the prescriber’s own signing
+          token.
+        </p>
         {list.error && <div className="err">{errorText(list.error)}</div>}
         {list.data?.length === 0 && <p className="muted">No prescriptions yet.</p>}
         <ul className="entries">
@@ -133,12 +144,12 @@ function Pharmacies({ patientId, d }: { patientId: string; d: PatientDetail }) {
 function NewDraft({ patientId, d }: { patientId: string; d: PatientDetail }) {
   const qc = useQueryClient();
   const [fav, setFav] = useState(0);
-  const f = RX_FAVORITES[fav]!;
-  const [form, setForm] = useState({ sig: f.sig as string, quantity: String(f.quantity), daysSupply: '7', refills: '0', indication: '', substitutionAllowed: true });
+  const f = FAVORITES[fav]!;
+  const [form, setForm] = useState({ sig: f.sig as string, quantity: String(f.quantity), daysSupply: String(f.daysSupply), refills: '0', indication: '', substitutionAllowed: true });
   const pick = (i: number) => {
-    const x = RX_FAVORITES[i]!;
+    const x = FAVORITES[i]!;
     setFav(i);
-    setForm({ ...form, sig: x.sig, quantity: String(x.quantity) });
+    setForm({ ...form, sig: x.sig, quantity: String(x.quantity), daysSupply: String(x.daysSupply), refills: '0' });
   };
   const create = useMutation({
     mutationFn: () =>
@@ -170,12 +181,19 @@ function NewDraft({ patientId, d }: { patientId: string; d: PatientDetail }) {
     >
       <h2>New prescription</h2>
       <div className="chips">
-        {RX_FAVORITES.map((x, i) => (
-          <button key={x.drugKey} type="button" className="chip" aria-pressed={fav === i} onClick={() => pick(i)} style={{ fontFamily: 'inherit' }}>
+        {FAVORITES.map((x, i) => (
+          <button key={x.drugKey} type="button" className={`chip${x.controlled ? ' chip-controlled' : ''}`} aria-pressed={fav === i} onClick={() => pick(i)} style={{ fontFamily: 'inherit' }}>
             {x.display}
+            {x.controlled && <span className="small"> · controlled</span>}
           </button>
         ))}
       </div>
+      {f.controlled && (
+        <p className="hint">
+          Controlled substance: the partner’s drug database sets the schedule. Schedule II has no refills, III–V at most five, and opioids are limited to 7 days
+          (practice rule). A prescriber signs it in the partner’s EPCS window.
+        </p>
+      )}
       <div className="field">
         <label htmlFor="rx-sig">Directions</label>
         <textarea id="rx-sig" value={form.sig} onChange={(e) => setForm({ ...form, sig: e.target.value })} />
@@ -212,6 +230,70 @@ function NewDraft({ patientId, d }: { patientId: string; d: PatientDetail }) {
 }
 
 function RxCard({ rx, patientId, d }: { rx: Prescription; patientId: string; d: PatientDetail }) {
+  if (rx.controlled_schedule) return <ControlledRxCard rx={rx} patientId={patientId} d={d} />;
+  return <PlainRxCard rx={rx} patientId={patientId} d={d} />;
+}
+
+function RxHeader({ rx }: { rx: Prescription }) {
+  return (
+    <div className="row spread">
+      <div>
+        <div className="title">
+          <b>{rx.drug_display}</b>{' '}
+          {rx.controlled_schedule && (
+            <span className="pill controlled" title={`DEA Schedule ${rx.controlled_schedule}`}>
+              {scheduleMark(rx.controlled_schedule)}
+            </span>
+          )}
+        </div>
+        <div className="small">{rx.sig}</div>
+        <div className="small muted">
+          Qty {rx.quantity} {rx.quantity_unit} · {rx.days_supply} days · {rx.refills} refills · for {rx.indication}
+        </div>
+      </div>
+      <span className={`pill ${rx.status === 'DRAFT' || rx.status === 'EPCS_PENDING' ? 'open' : rx.status === 'ERROR' || rx.status === 'CANCELLED' ? 'amend' : 'signed'}`}>
+        {rx.status === 'EPCS_PENDING' ? 'Waiting for signature' : humanize(rx.status.toLowerCase())}
+      </span>
+    </div>
+  );
+}
+
+function Alerts({ rx, ack, setAck, editable }: { rx: Prescription; ack: Set<string>; setAck: (s: Set<string>) => void; editable: boolean }) {
+  if (rx.alerts.length === 0) return null;
+  return (
+    <div className="banner warn" style={{ display: 'grid' }}>
+      {rx.alerts.map((a) => (
+        <label key={a.id} className="row" style={{ alignItems: 'flex-start' }}>
+          {editable && <input type="checkbox" checked={ack.has(a.id)} onChange={(e) => { const n = new Set(ack); if (e.target.checked) n.add(a.id); else n.delete(a.id); setAck(n); }} />}
+          <span>
+            <b>⚠ {humanize(a.kind)} ({a.severity})</b>: {a.message}
+            {editable && <span className="small muted"> · tick to confirm you reviewed it</span>}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function RxHistory({ rx }: { rx: Prescription }) {
+  return (
+    <>
+      {rx.pharmacy_snapshot && <div className="small muted">{rx.status === 'EPCS_PENDING' ? 'To' : 'Sent to'} {rx.pharmacy_snapshot.name}</div>}
+      {rx.events && (
+        <ol className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
+          {rx.events.map((e, i) => (
+            <li key={i}>
+              {fmtStamp(e.at)}: {e.status === 'EPCS_PENDING' ? 'Locked for EPCS signing' : humanize(e.status.toLowerCase())}
+              {e.detail ? ` (${e.detail})` : ''} · {e.source}
+            </li>
+          ))}
+        </ol>
+      )}
+    </>
+  );
+}
+
+function PlainRxCard({ rx, patientId, d }: { rx: Prescription; patientId: string; d: PatientDetail }) {
   const { can, withStepUp, me } = useSession();
   const qc = useQueryClient();
   const [ack, setAck] = useState<Set<string>>(new Set());
@@ -229,31 +311,8 @@ function RxCard({ rx, patientId, d }: { rx: Prescription; patientId: string; d: 
   const unacked = rx.alerts.filter((a) => !ack.has(a.id));
   return (
     <li className="panel" style={{ background: 'var(--sunken)' }}>
-      <div className="row spread">
-        <div>
-          <div className="title">
-            <b>{rx.drug_display}</b>
-          </div>
-          <div className="small">{rx.sig}</div>
-          <div className="small muted">
-            Qty {rx.quantity} {rx.quantity_unit} · {rx.days_supply} days · {rx.refills} refills · for {rx.indication}
-          </div>
-        </div>
-        <span className={`pill ${rx.status === 'DRAFT' ? 'open' : rx.status === 'ERROR' || rx.status === 'CANCELLED' ? 'amend' : 'signed'}`}>{humanize(rx.status.toLowerCase())}</span>
-      </div>
-      {rx.alerts.length > 0 && (
-        <div className="banner warn" style={{ display: 'grid' }}>
-          {rx.alerts.map((a) => (
-            <label key={a.id} className="row" style={{ alignItems: 'flex-start' }}>
-              {draft && <input type="checkbox" checked={ack.has(a.id)} onChange={(e) => { const n = new Set(ack); if (e.target.checked) n.add(a.id); else n.delete(a.id); setAck(n); }} />}
-              <span>
-                <b>⚠ {humanize(a.kind)} ({a.severity})</b>: {a.message}
-                {draft && <span className="small muted"> · tick to confirm you reviewed it</span>}
-              </span>
-            </label>
-          ))}
-        </div>
-      )}
+      <RxHeader rx={rx} />
+      <Alerts rx={rx} ack={ack} setAck={setAck} editable={draft} />
       {draft && can('prescription.sign_noncontrolled') && (
         <>
           <div className="field">
@@ -285,16 +344,149 @@ function RxCard({ rx, patientId, d }: { rx: Prescription; patientId: string; d: 
           {!can('prescription.sign_noncontrolled') && <span className="hint">A prescriber will review and sign this draft.</span>}
         </div>
       )}
-      {rx.pharmacy_snapshot && <div className="small muted">Sent to {rx.pharmacy_snapshot.name}</div>}
-      {rx.events && (
-        <ol className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
-          {rx.events.map((e, i) => (
-            <li key={i}>
-              {fmtStamp(e.at)}: {humanize(e.status.toLowerCase())}
-              {e.detail ? ` (${e.detail})` : ''} · {e.source}
-            </li>
-          ))}
-        </ol>
+      <RxHistory rx={rx} />
+    </li>
+  );
+}
+
+/**
+ * A controlled prescription: our checks (privilege, step-up, DEA registration, approved access,
+ * EPCS-capable pharmacy, PDMP, alerts) lock and hash it, then the prescriber signs in the partner's
+ * certified window with their own two factors. It is sent only when the partner reports that signature.
+ */
+function ControlledRxCard({ rx, patientId, d }: { rx: Prescription; patientId: string; d: PatientDetail }) {
+  const { can, withStepUp, me } = useSession();
+  const qc = useQueryClient();
+  const isPrescriber = can('prescription.sign_controlled');
+  const readiness = useQuery({ queryKey: ['epcs-me'], queryFn: () => api.get<EpcsReadiness>('/epcs/me'), enabled: isPrescriber });
+  const capable = d.pharmacies.filter((p) => p.epcs_capable);
+  const [ack, setAck] = useState<Set<string>>(new Set());
+  const [pharmacy, setPharmacy] = useState(capable.find((p) => p.id === rx.pharmacy_preference_id)?.id ?? capable[0]?.id ?? '');
+  const [pdmp, setPdmp] = useState(false);
+  const [attest, setAttest] = useState(false);
+  const [windowId, setWindowId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const key = useRef(crypto.randomUUID());
+  const refresh = () => qc.invalidateQueries({ queryKey: ['rx', patientId] });
+  const start = useMutation({
+    mutationFn: () =>
+      withStepUp(() =>
+        api.post<{ session: { sessionId: string } | null }>(`/prescriptions/${rx.id}/epcs/start`, {
+          pharmacyPreferenceId: pharmacy,
+          acknowledgedAlertIds: [...ack],
+          idempotencyKey: key.current,
+          pdmpReviewed: pdmp,
+        }),
+      ),
+    onSuccess: (r) => r.session && setWindowId(r.session.sessionId),
+    onSettled: refresh,
+  });
+  const reopen = useMutation({
+    mutationFn: () => withStepUp(() => api.post<{ session: { sessionId: string } }>(`/prescriptions/${rx.id}/epcs/reopen`, {})),
+    onSuccess: (r) => setWindowId(r.session.sessionId),
+    onSettled: refresh,
+  });
+  const cancel = useMutation({ mutationFn: () => api.post(`/prescriptions/${rx.id}/cancel`, {}), onSettled: refresh });
+  const draft = rx.status === 'DRAFT';
+  const pending = rx.status === 'EPCS_PENDING';
+  const mine = rx.signed_by === me.staffId;
+  const unacked = rx.alerts.filter((a) => !ack.has(a.id));
+  const r = readiness.data;
+  const covered = !!r?.canSign && r.schedules.includes(rx.controlled_schedule!);
+  const needsPdmp = needsPdmpReview(rx.controlled_class);
+  return (
+    <li className="panel rx-controlled" style={{ background: 'var(--sunken)' }}>
+      <RxHeader rx={rx} />
+      <Alerts rx={rx} ack={ack} setAck={setAck} editable={draft && isPrescriber} />
+      {draft && isPrescriber && r && !covered && (
+        <Callout kind="blocked" title="You can’t sign this controlled prescription yet">
+          {r.canSign ? (
+            <>Your approved EPCS access covers {r.schedules.map(scheduleMark).join(', ')}, not {scheduleMark(rx.controlled_schedule!)}.</>
+          ) : (
+            <>
+              Still needed: {r.missing.join('; ')}. Your practice’s EPCS access managers set this up.
+            </>
+          )}
+        </Callout>
+      )}
+      {draft && isPrescriber && covered && (
+        <>
+          <div className="field">
+            <label htmlFor={`ph-${rx.id}`}>Send to (pharmacies that accept electronic controlled prescriptions)</label>
+            <select id={`ph-${rx.id}`} value={pharmacy} onChange={(e) => setPharmacy(e.target.value)}>
+              {capable.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({humanize(p.rank)})
+                </option>
+              ))}
+            </select>
+            {capable.length < d.pharmacies.length && (
+              <div className="hint">
+                Not listed (cannot receive EPCS): {d.pharmacies.filter((p) => !p.epcs_capable).map((p) => p.name).join(', ')}.
+              </div>
+            )}
+            {capable.length === 0 && <div className="err">None of this patient’s pharmacies accept electronic controlled prescriptions. Add one first.</div>}
+          </div>
+          {needsPdmp && (
+            <label className="row small" style={{ alignItems: 'flex-start' }}>
+              <input type="checkbox" checked={pdmp} onChange={(e) => setPdmp(e.target.checked)} /> I checked the state prescription monitoring program (PDMP) for this
+              patient today.
+            </label>
+          )}
+          <label className="row small" style={{ alignItems: 'flex-start' }}>
+            <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} /> I, {me.displayName}, will sign this {scheduleMark(rx.controlled_schedule!)}{' '}
+            prescription with my own signing token.
+          </label>
+        </>
+      )}
+      {pending && (
+        <div className="banner lock">
+          <span aria-hidden="true">🔒</span>
+          <span>
+            Locked for signing. {mine ? 'Finish in the partner’s EPCS window.' : `Waiting for ${rx.signed_by_name ?? 'the prescriber'} to sign in the partner’s EPCS window.`}
+          </span>
+        </div>
+      )}
+      {rx.epcs_signature && (
+        <div className="small">
+          ✓ Signed by {rx.signed_by_name} in the partner’s EPCS window with two factors ({rx.epcs_signature.factors.join(' + ')}), {fmtStamp(rx.epcs_signature.finishedAt)}
+          {rx.pdmp_reviewed_at ? ' · PDMP checked' : ''}
+        </div>
+      )}
+      {notice && <Callout kind="info" onDismiss={() => setNotice(null)}>{notice}</Callout>}
+      {(start.error || reopen.error || cancel.error) && <div className="err">{errorText(start.error ?? reopen.error ?? cancel.error)}</div>}
+      {(draft || pending) && (
+        <div className="row">
+          {draft && isPrescriber && covered && (
+            <button className="btn sign" disabled={!pharmacy || !attest || (needsPdmp && !pdmp) || unacked.length > 0 || start.isPending} onClick={() => start.mutate()}>
+              Sign in EPCS window
+            </button>
+          )}
+          {pending && mine && isPrescriber && (
+            <button
+              className="btn sign"
+              disabled={reopen.isPending}
+              onClick={() => (rx.epcs_session ? setWindowId(rx.epcs_session.sessionId) : reopen.mutate())}
+            >
+              {rx.epcs_session ? 'Open signing window' : 'Open a new signing window'}
+            </button>
+          )}
+          <button className="btn" onClick={() => cancel.mutate()}>
+            {draft ? 'Discard draft' : 'Cancel prescription'}
+          </button>
+          {draft && !isPrescriber && <span className="hint">A prescriber with EPCS access will review and sign this draft.</span>}
+        </div>
+      )}
+      <RxHistory rx={rx} />
+      {windowId && (
+        <PartnerWindow
+          sessionId={windowId}
+          onClose={(outcome) => {
+            setWindowId(null);
+            if (outcome === 'declined') setNotice('You declined in the partner window. Nothing was sent; the prescription stays locked until you sign or cancel it.');
+            refresh();
+          }}
+        />
       )}
     </li>
   );

@@ -12,6 +12,7 @@ import { PortalApp } from './pages/portal/PortalApp';
 import { PortalInbox } from './pages/PortalInbox';
 import { BillingPage } from './pages/billing/BillingPage';
 import { StaffAdmin } from './pages/admin/StaffAdmin';
+import { EpcsAdmin } from './pages/admin/EpcsAdmin';
 import { AccountSetup } from './pages/AccountSetup';
 import { LabCases } from './pages/LabCases';
 import { TelehealthPage } from './pages/telehealth/TelehealthPage';
@@ -58,6 +59,7 @@ function Authed() {
       ['lab-cases', 'Lab cases', privs.includes('lab_case.manage')],
       ['billing', 'Billing', privs.includes('billing.read')],
       ['admin', 'Staff', privs.includes('admin.staff')],
+      ['epcs', 'EPCS', privs.includes('epcs.manage_access')],
       ['audit', 'Audit log', privs.includes('audit.read')],
     ] as const
   );
@@ -110,6 +112,7 @@ function Authed() {
           {section === 'billing' && <BillingPage />}
           {section === 'audit' && <AuditLog />}
           {section === 'admin' && <StaffAdmin staffId={id} />}
+          {section === 'epcs' && <EpcsAdmin />}
           {section === 'portal-inbox' && <PortalInbox />}
           {section === 'telehealth' && <TelehealthPage route={route} />}
         </main>

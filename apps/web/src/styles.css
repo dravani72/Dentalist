@@ -468,3 +468,16 @@ div.surgery-problems { list-style: none; padding-left: 0; }
 .viewer-measurements input { width: 100%; }
 .read-form { display: grid; gap: 6px; }
 .read-form .attest { padding: 8px; border: 1.5px solid var(--line); border-radius: 6px; }
+
+/* EPCS: controlled-substance marks and the partner's certified window. Never color alone:
+   the C-II mark is text with a double border; the partner window has its own header bar. */
+.pill.controlled { color: var(--fg); border-style: double; border-width: 3px; font-family: var(--font-mono); font-weight: 800; }
+.chip.chip-controlled { border-style: double; border-width: 3px; }
+.rx-controlled { border-left: 4px double var(--c-planned); }
+.linklike { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+.partner-window { border: 2px solid var(--fg); padding-top: 0; }
+.partner-bar { display: flex; gap: 8px; align-items: center; margin: 0 -18px; padding: 8px 18px; background: var(--sunken); border-bottom: 1.5px solid var(--line); font-size: 13px; }
+.partner-sandbox { font-family: var(--font-mono); font-size: 11px; font-weight: 800; border: 1.5px dashed currentColor; border-radius: 4px; padding: 0 5px; margin-left: 4px; }
+.partner-order { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; }
+.partner-order dt { color: var(--muted); font-size: 13px; }
+.partner-order dd { margin: 0; }
