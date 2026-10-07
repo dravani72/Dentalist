@@ -79,6 +79,63 @@ export interface EntrySet {
   endo_canal: EndoCanalEntry[];
   implant: ImplantEntry[];
   implant_event: ImplantEventEntry[];
+  surgery: SurgicalDetailEntry[];
+  specimen: BiopsySpecimenEntry[];
+  specimen_result: BiopsyResultEntry[];
+}
+
+/** The structured surgical record of an extraction. */
+export interface SurgicalDetailEntry extends Entry {
+  procedure_occurrence_id: string;
+  approach: string;
+  impaction: string;
+  angulation: string | null;
+  pell_gregory_class: string | null;
+  pell_gregory_depth: string | null;
+  flap: string;
+  bone_removal: boolean;
+  sectioned: boolean;
+  root_outcome: string;
+  socket_graft_material: string | null;
+  socket_graft_product: string | null;
+  socket_graft_lot: string | null;
+  membrane_product: string | null;
+  membrane_lot: string | null;
+  sinus_communication: string;
+  sinus_closure: string | null;
+  hemostasis_achieved: boolean;
+  hemostasis_methods: string[];
+  suture_material: string | null;
+  suture_size: string | null;
+  suture_count: number | null;
+  complications: string[];
+  postop_verbal: boolean;
+  postop_written: boolean;
+}
+
+/** A biopsy specimen. specimen_id is its lasting identity across amended versions. */
+export interface BiopsySpecimenEntry extends Entry {
+  specimen_id: string;
+  procedure_occurrence_id: string;
+  site: string;
+  technique: string;
+  lesion_size_mm: string | null;
+  appearance: string | null;
+  clinical_impression: string;
+  fixative: string;
+  lab_name: string;
+  container_label: string | null;
+}
+
+/** A pathology result for a specimen, recorded in the visit where it was reviewed. */
+export interface BiopsyResultEntry extends Entry {
+  specimen_id: string;
+  received_on: string;
+  lab_accession: string | null;
+  category: string;
+  diagnosis: string;
+  follow_up: string | null;
+  patient_informed: boolean;
 }
 
 /** An implant placement record. device_id is the device's lasting identity across amended versions. */

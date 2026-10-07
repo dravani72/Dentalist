@@ -4,7 +4,7 @@
  * billing projection) are deliberately left out of the canonical form: they are not part of
  * what the dentist attests to.
  */
-export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media' | 'perio' | 'endo_dx' | 'endo_test' | 'endo_canal' | 'implant' | 'implant_event';
+export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media' | 'perio' | 'endo_dx' | 'endo_test' | 'endo_canal' | 'implant' | 'implant_event' | 'surgery' | 'specimen' | 'specimen_result';
 
 export interface EntryKindDef {
   table: string;
@@ -89,6 +89,48 @@ export const IMPLANT_EVENT_DETAIL_COLUMNS = [
   'bone_loss_mm',
   'note',
 ] as const;
+
+export const SURGICAL_DETAIL_COLUMNS = [
+  'approach',
+  'impaction',
+  'angulation',
+  'pell_gregory_class',
+  'pell_gregory_depth',
+  'flap',
+  'bone_removal',
+  'sectioned',
+  'root_outcome',
+  'socket_graft_material',
+  'socket_graft_product',
+  'socket_graft_lot',
+  'membrane_product',
+  'membrane_lot',
+  'sinus_communication',
+  'sinus_closure',
+  'hemostasis_achieved',
+  'hemostasis_methods',
+  'suture_material',
+  'suture_size',
+  'suture_count',
+  'complications',
+  'postop_verbal',
+  'postop_written',
+  'note',
+] as const;
+
+export const SPECIMEN_DETAIL_COLUMNS = [
+  'site',
+  'technique',
+  'lesion_size_mm',
+  'appearance',
+  'clinical_impression',
+  'fixative',
+  'lab_name',
+  'container_label',
+  'note',
+] as const;
+
+export const SPECIMEN_RESULT_DETAIL_COLUMNS = ['received_on', 'lab_accession', 'category', 'diagnosis', 'follow_up', 'patient_informed', 'note'] as const;
 
 /**
  * A perio exam's measurements, aggregated in a fixed order so the attested form is stable.
@@ -255,6 +297,30 @@ export const ENTRY_KINDS: Record<EntryKind, EntryKindDef> = {
     hasVersion: true,
     supersedable: true,
   },
+  surgery: {
+    table: 'surgical_detail',
+    editable: [...SURGICAL_DETAIL_COLUMNS],
+    clinical: ['procedure_occurrence_id', ...SURGICAL_DETAIL_COLUMNS],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
+  specimen: {
+    table: 'biopsy_specimen',
+    editable: [...SPECIMEN_DETAIL_COLUMNS],
+    clinical: ['specimen_id', 'procedure_occurrence_id', ...SPECIMEN_DETAIL_COLUMNS],
+    hasTooth: false,
+    hasVersion: true,
+    supersedable: true,
+  },
+  specimen_result: {
+    table: 'biopsy_result',
+    editable: [...SPECIMEN_RESULT_DETAIL_COLUMNS],
+    clinical: ['specimen_id', ...SPECIMEN_RESULT_DETAIL_COLUMNS],
+    hasTooth: false,
+    hasVersion: true,
+    supersedable: true,
+  },
 };
 
 export const ROUTE_KINDS: Record<string, EntryKind> = {
@@ -271,6 +337,9 @@ export const ROUTE_KINDS: Record<string, EntryKind> = {
   'endo-canals': 'endo_canal',
   implants: 'implant',
   'implant-events': 'implant_event',
+  'surgical-details': 'surgery',
+  'biopsy-specimens': 'specimen',
+  'biopsy-results': 'specimen_result',
 };
 
 function norm(v: unknown): unknown {

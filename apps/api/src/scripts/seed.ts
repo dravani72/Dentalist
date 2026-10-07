@@ -17,6 +17,7 @@ import { SigningService } from '../charting/signing.service';
 import { PerioService } from '../charting/perio.service';
 import { EndoService } from '../charting/endo.service';
 import { ImplantService } from '../charting/implant.service';
+import { SurgeryService } from '../charting/surgery.service';
 import { MediaService } from '../media/media.service';
 import { PrescribingService } from '../prescribing/prescribing.service';
 import { PortalStaffService } from '../portal/portal-staff.service';
@@ -53,6 +54,7 @@ async function main() {
   const perio = app.get(PerioService);
   const endo = app.get(EndoService);
   const implants = app.get(ImplantService);
+  const surgery = app.get(SurgeryService);
   const media = app.get(MediaService);
   const rx = app.get(PrescribingService);
   const portalStaff = app.get(PortalStaffService);
@@ -96,7 +98,7 @@ async function main() {
     });
     await record(id);
     // Backdate the visit while it is still a draft (synthetic history only).
-    for (const t of ['clinical_finding', 'existing_restoration', 'planned_procedure', 'procedure_occurrence', 'anesthetic_event', 'encounter_note', 'media_object', 'endo_diagnosis', 'endo_test', 'endo_canal', 'implant', 'implant_event']) {
+    for (const t of ['clinical_finding', 'existing_restoration', 'planned_procedure', 'procedure_occurrence', 'anesthetic_event', 'encounter_note', 'media_object', 'endo_diagnosis', 'endo_test', 'endo_canal', 'implant', 'implant_event', 'surgical_detail', 'biopsy_specimen', 'biopsy_result']) {
       await owner.query(`UPDATE ${t} SET recorded_at = $2::date + time '14:30' WHERE encounter_id = $1`, [id, date]);
     }
     await owner.query(
@@ -111,6 +113,7 @@ async function main() {
     await signing.sign(by, id);
     return id;
   }
+  const daysAgoDate = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
   const full = (n: number[]): XrayTooth[] => n.map((u) => ({ universal: u }));
   const fmxUpper = full([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
   const fmxLower = full([32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17]);
@@ -222,6 +225,12 @@ async function main() {
       tooth: '30', surfaces: [], procedureConcept: 'extraction', performedBy: [amy.staffId], assistedBy: [jane.staffId],
       details: { technique: 'surgical, sectioned', hemostasis: true, postop_instructions: true }, anesthetics: [],
     });
+    await surgery.recordSurgery(jane, id, {
+      procedureId: ext!.id, approach: 'surgical', impaction: 'none', angulation: null, pellGregoryClass: null, pellGregoryDepth: null, flap: 'envelope',
+      boneRemoval: false, sectioned: true, rootOutcome: 'complete', sinusCommunication: 'none', sinusClosure: null, hemostasisAchieved: true,
+      hemostasisMethods: ['pressure', 'sutures'], sutureMaterial: 'polyglactin', sutureSize: '4-0', sutureCount: 3, complications: [], postopVerbal: true, postopWritten: true,
+      note: 'Roots sectioned and delivered separately to preserve the buccal plate for the immediate implant.',
+    });
     await chart.procedureStatus(amy, ext!.id, 'PERFORMED');
     const place = await chart.addProcedure(amy, id, { tooth: '30', surfaces: [], procedureConcept: 'implant_placement', performedBy: [amy.staffId], assistedBy: [jane.staffId], details: {}, anesthetics: [] });
     const r = await implants.place(amy, id, {
@@ -243,6 +252,56 @@ async function main() {
   await visit(amy, '2025-08-20', 'Recall exam', { label: 'PA #30', modality: 'periapical', upper: [], lower: pa30({ crown: true }), teeth: ['30'] }, async (id) => {
     await implants.recordEvent(rosa, id, { implantId: implant30, eventType: 'follow_up', isq: null, abutmentTorqueNcm: null, restorationType: null, retention: null, complication: null, boneLossMm: 0.3, note: 'No bleeding or suppuration on probing; stable crestal bone.' });
   }, true, hector.id);
+
+  // Oral surgery: Mei Tanaka's impacted #1 came out in 2025 with a suspected sinus opening;
+  // Samuel Okafor's leukoplakia biopsy came back as mild dysplasia; two recent biopsies are still
+  // waiting for results (Mei's is overdue), so the biopsy worklist has something to show.
+  const [priya, samuel, , , mei] = others as [typeof jordan, typeof jordan, typeof jordan, typeof jordan, typeof jordan];
+  const pa = (teeth: number[], label: string, upper: boolean) => ({
+    label, modality: 'periapical' as const, upper: upper ? full(teeth) : [], lower: upper ? [] : full(teeth), teeth: teeth.map(String),
+  });
+  const biopsyProcedure = async (by: Actor, id: string) => {
+    const b = await chart.addProcedure(by, id, { surfaces: [], procedureConcept: 'biopsy', performedBy: [by.staffId], assistedBy: [jane.staffId], details: { hemostasis: true, sutures: '1 × 4-0 chromic gut', postop_instructions: true }, anesthetics: [] });
+    return b!.id;
+  };
+  await visit(lee, '2025-03-11', 'Remove upper right wisdom tooth', pa([1, 2, 3], 'PA #1', true), async (id) => {
+    const ext = await chart.addProcedure(lee, id, { tooth: '1', surfaces: [], procedureConcept: 'extraction', performedBy: [lee.staffId], assistedBy: [jane.staffId], details: {}, anesthetics: [] });
+    await surgery.recordSurgery(jane, id, {
+      procedureId: ext!.id, approach: 'surgical', impaction: 'partial_bony', angulation: 'distoangular', pellGregoryClass: 'II', pellGregoryDepth: 'B', flap: 'triangular',
+      boneRemoval: true, sectioned: true, rootOutcome: 'complete', sinusCommunication: 'suspected', sinusClosure: 'collagen_plug', hemostasisAchieved: true,
+      hemostasisMethods: ['pressure', 'collagen_sponge', 'sutures'], sutureMaterial: 'chromic_gut', sutureSize: '4-0', sutureCount: 2, complications: [], postopVerbal: true, postopWritten: true,
+      note: 'Thin sinus floor over the distal root; collagen plug placed. Sinus precautions given (no nose blowing or straws for 2 weeks).',
+    });
+    await chart.procedureStatus(lee, ext!.id, 'PERFORMED');
+  }, true, mei.id);
+  let leukoplakia = '';
+  await visit(amy, '2025-06-03', 'White patch inside left cheek', pa([19, 20, 21], 'PA #19-21', false), async (id) => {
+    const b = await biopsyProcedure(amy, id);
+    const s = await surgery.recordSpecimen(jane, id, {
+      procedureId: b, site: 'Left buccal mucosa, opposite #19', technique: 'incisional', lesionSizeMm: 14, appearance: 'Homogeneous white plaque, does not wipe off',
+      clinicalImpression: 'Leukoplakia; rule out dysplasia', fixative: 'formalin', labName: 'Synthetic Oral Pathology Lab', containerLabel: 'A',
+      note: 'Patient on warfarin; INR 2.4 the day before. Local hemostasis only.',
+    });
+    leukoplakia = s.id;
+    await chart.procedureStatus(amy, b, 'PERFORMED');
+  }, true, samuel.id);
+  await visit(amy, '2025-06-17', 'Biopsy result and suture check', pa([19, 20, 21], 'PA #19-21', false), async (id) => {
+    await surgery.recordResult(amy, id, {
+      specimenId: leukoplakia, receivedOn: '2025-06-12', labAccession: 'SYN-SP-25-0611', category: 'premalignant', diagnosis: 'Mild epithelial dysplasia',
+      followUp: 'Refer for excision; re-examine every 3 months', patientInformed: true, note: 'Discussed tobacco cessation.',
+    });
+  }, true, samuel.id);
+  const recentBiopsy = async (patientId: string, ago: number, site: string, impression: string) =>
+    visit(amy, daysAgoDate(ago), 'Lump on the lip', pa([23, 24, 25, 26], 'PA #23-26', false), async (id) => {
+      const b = await biopsyProcedure(amy, id);
+      await surgery.recordSpecimen(jane, id, {
+        procedureId: b, site, technique: 'excisional', lesionSizeMm: 5, appearance: 'Soft, bluish, fluctuant', clinicalImpression: impression,
+        fixative: 'formalin', labName: 'Synthetic Oral Pathology Lab', containerLabel: 'A',
+      });
+      await chart.procedureStatus(amy, b, 'PERFORMED');
+    }, true, patientId);
+  await recentBiopsy(mei.id, 20, 'Lower lip, left of midline', 'Mucocele');
+  await recentBiopsy(priya.id, 4, 'Lower labial mucosa', 'Mucocele versus fibroma');
 
   // ---------------------------------------------------------------- billing history
   // Charges for the signed visits (invented SYNTHETIC codes and fees). The 2021 work was paid by

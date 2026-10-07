@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Inject } from '@nestjs/common';
 import {
+  BiopsyResultRequest,
+  BiopsySpecimenRequest,
   ImplantEventRequest,
+  SurgicalDetailRequest,
   ImplantPlacementRequest,
   EndoCanalRequest,
   EndoDiagnosisRequest,
@@ -30,6 +33,7 @@ import { SigningService } from './signing.service';
 import { PerioService } from './perio.service';
 import { EndoService } from './endo.service';
 import { ImplantService } from './implant.service';
+import { SurgeryService } from './surgery.service';
 import { ROUTE_KINDS } from './entry-kinds';
 
 const NoteRequest = z.object({ kind: z.enum(['clinical', 'hpi', 'postop_instructions', 'followup_plan']), body: z.string().trim().min(1).max(8000) });
@@ -43,6 +47,7 @@ export class ChartingController {
     @Inject(PerioService) private readonly perio: PerioService,
     @Inject(EndoService) private readonly endo: EndoService,
     @Inject(ImplantService) private readonly implants: ImplantService,
+    @Inject(SurgeryService) private readonly surgery: SurgeryService,
   ) {}
 
   @Get('patients/:id/chart')
@@ -148,6 +153,26 @@ export class ChartingController {
   @Post('encounters/:id/implant-events')
   implantEvent(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(ImplantEventRequest)) req: z.infer<typeof ImplantEventRequest>) {
     return this.implants.recordEvent(actor, id, req);
+  }
+
+  @Post('encounters/:id/surgical-details')
+  surgicalDetail(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(SurgicalDetailRequest)) req: z.infer<typeof SurgicalDetailRequest>) {
+    return this.surgery.recordSurgery(actor, id, req);
+  }
+
+  @Post('encounters/:id/biopsy-specimens')
+  biopsySpecimen(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(BiopsySpecimenRequest)) req: z.infer<typeof BiopsySpecimenRequest>) {
+    return this.surgery.recordSpecimen(actor, id, req);
+  }
+
+  @Post('encounters/:id/biopsy-results')
+  biopsyResult(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(BiopsyResultRequest)) req: z.infer<typeof BiopsyResultRequest>) {
+    return this.surgery.recordResult(actor, id, req);
+  }
+
+  @Get('biopsies/awaiting-results')
+  biopsiesAwaiting(@CurrentActor() actor: Actor) {
+    return this.surgery.awaitingResults(actor);
   }
 
   @Post('planned-procedures/:id/status')

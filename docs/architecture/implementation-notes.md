@@ -27,6 +27,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Telehealth triage: cases, intake, jurisdiction eligibility, sessions, remote findings, signing evidence | 0009; `apps/api/src/telehealth/*` (`RtcAdapter`, `FakeRtcAdapter`); `packages/shared/src/telehealth.ts`; `config/jurisdiction_registry.json`; `apps/web/src/pages/telehealth/*`, portal `telehealth.tsx`; details in `telehealth.md` |
 | Periodontal charting (Phase 6): six-site probing, recession, CAL, BOP, suppuration, plaque, calculus, furcation, mobility, keratinized gingiva | 0010; `apps/api/src/charting/perio.service.ts`, `perio-rows.ts`, `entry-kinds.ts` (`perio`); `packages/shared/src/perio.ts`; `apps/web/src/pages/PerioTab.tsx`. See "Periodontal charting" below |
 | Endodontic charting (Phase 6): AAE-style pulpal and apical diagnosis, pulp and periapical tests with control teeth, canals of a root canal (working length, preparation, obturation) | 0011; `apps/api/src/charting/endo.service.ts`, `endo-rows.ts`, `entry-kinds.ts` (`endo_dx`, `endo_test`, `endo_canal`); `packages/shared/src/endo.ts`; `apps/web/src/pages/EndoTab.tsx`. See "Endodontic charting" below |
+| Oral surgery (Phase 6): structured extraction record (approach, impaction, flap, bone removal, sectioning, socket graft, sinus, hemostasis, sutures, complications, post-op), biopsy specimens, pathology results and the waiting list | 0013; `apps/api/src/charting/surgery.service.ts`, `surgery-rows.ts`, `entry-kinds.ts` (`surgery`, `specimen`, `specimen_result`); `packages/shared/src/surgery.ts`; `apps/web/src/pages/SurgeryTab.tsx`, `Patients.tsx` (worklist). See "Oral surgery" below |
 | Implant records (Phase 6): implant as a persistent device (manufacturer, catalog, lot/serial, size, torque, ISQ, grafts) and its later steps (uncovery, abutment, restoration, checks, complications, removal) | 0012; `apps/api/src/charting/implant.service.ts`, `implant-rows.ts`, `entry-kinds.ts` (`implant`, `implant_event`); `packages/shared/src/implant.ts`; `apps/web/src/pages/ImplantsTab.tsx`. See "Implant records" below |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
@@ -180,6 +181,38 @@ The **Implants** tab on a patient record shows one card per implant: what was pl
 - The seed gives Hector Alvarez an immediate implant at #30 (2024, after a sectioned extraction, with graft and
   membrane), uncovery and a screw-retained crown four months later, and a 2025 follow-up.
 
+## Oral surgery
+
+The **Surgery** tab on a patient record has a card per extraction and per biopsy specimen.
+
+- **Surgical record of an extraction** (`surgical_detail`), one per extraction procedure, recorded in its visit on the
+  same tooth: impaction (with Winter angulation and Pell and Gregory class), flap design, bone removal, sectioning,
+  whether a root tip was left (needs a note), socket graft and membrane with lots, sinus communication (upper teeth
+  only, and a confirmed one needs how it was managed), hemostasis and how, sutures (material, size, count),
+  complications from a fixed list, and verbal or written post-op instructions. The approach follows from what was
+  done: a flap, bone removal or sectioning makes it surgical, and a bony impaction can't be simple. The database
+  checks the same rules.
+- **Completion rule.** A surgical record stands in for the extraction's free-text technique, hemostasis, sutures and
+  post-op fields; if it says hemostasis was not achieved, the extraction can't be marked performed.
+- **Biopsies** are a new procedure (`biopsy`, mouth scope, invented code SYN-511). Each specimen (`biopsy_specimen`)
+  records site, technique, size, appearance, clinical impression, fixative, lab and container label. A biopsy can't
+  be marked performed until a specimen is recorded. `specimen_id` is the specimen's lasting identity across amendments.
+- **Pathology results** (`biopsy_result`) are recorded by a dentist (`diagnosis.create`) in the visit where they are
+  reviewed, which may be a telehealth visit: date received (not before collection, not in the future), accession
+  number, category (benign, premalignant, malignant, non-diagnostic), the pathologist's diagnosis as reported, a
+  follow-up plan (required unless benign) and whether the patient was told. One result per specimen; corrections
+  are edits or amendments.
+- **Waiting list.** `GET /biopsies/awaiting-results` lists specimens with no result at the caller's locations
+  (clinical staff only; break-glass patients are left out). The Patients page shows it when non-empty, and a result
+  more than 14 days out is marked overdue.
+- **Who records**: `procedure.complete` for surgical records and specimens, `diagnosis.create` for results. Surgery
+  and specimens are in person only.
+- **Colorblind-safe**: specimen status is written out with a mark and border (◷ awaiting, dashed; ⚠ overdue, double;
+  ✓ benign; ▲ needs follow-up, dotted); complications, sinus communication, a retained root tip and failed hemostasis
+  are listed with ⚠ and a wavy underline.
+- The seed adds Hector's #30 surgical record, Mei Tanaka's impacted #1 (2025), Samuel Okafor's leukoplakia biopsy
+  with a dysplasia result, and two biopsies still waiting (one overdue).
+
 ## Not built yet
 
 - Portal pieces still missing: online payment (needs a payment processor choice), referral and document downloads,
@@ -190,7 +223,11 @@ The **Implants** tab on a patient record shows one card per implant: what was pl
   primary payment), claim status inquiry (276/277), statements by mail, payment plans, collections.
 - Telehealth gaps: LiveKit audio egress into the encrypted media store, transcription, the replay buffer, referral
   records, telehealth billing codes, real state rules (each needs legal review), an approved triage protocol.
-- Phase 6 still to come: oral surgery, lab cases, DICOM/CBCT viewing.
+- Phase 6 still to come: lab cases, DICOM/CBCT viewing.
+  Oral surgery gaps: sedation and general anesthesia records (monitoring, vitals, recovery), consent linked to the
+  procedure, an electronic pathology requisition and results feed from a lab (needs a lab partner and BAA), a
+  suture-removal reminder for non-resorbable sutures, other surgical procedures (alveoloplasty, frenectomy, incision
+  and drainage), and showing a biopsy site on a soft-tissue diagram.
   Implant gaps: UDI barcode scanning and a device-recall search across patients, probing on implant sites in the
   perio chart (the implant tooth instances now exist), drawing the implant restoration on the odontogram from
   implant events, and implant-supported bridges spanning several sites.

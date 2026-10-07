@@ -113,6 +113,14 @@ graft and membrane lots), its stability readings and its history through to a sc
 follow-up. Start today's visit to record a step on it, or start an implant placement at another site and record the
 device; a lot or serial number is required.
 
+### Oral surgery
+
+As amy.jones, the **Patients** page lists biopsies whose results are not back (Mei Tanaka's is overdue, Priya
+Natarajan's is recent). Open **Mei Tanaka → Surgery** for the 2025 removal of an impacted #1 (flap, bone removal,
+sectioning, a suspected sinus opening closed with a collagen plug) and **Samuel Okafor → Surgery** for a leukoplakia
+biopsy that came back as mild dysplasia, with its follow-up plan. Start today's visit to start an extraction or a
+soft-tissue biopsy and record its surgical detail or specimen; a dentist records pathology results.
+
 ### Billing
 
 Codes and fees are an invented **SYNTHETIC** set (`SYN-…`, `apps/api/src/billing/synthetic-codes.ts`); the seed loads
@@ -152,7 +160,10 @@ amendment by superseding the exam, integrity) and endo charting (`test/endo.test
 dentist-only diagnosis, canals tied to a root canal in the same visit, the completion rule, front desk and
 other-practice refusals, database guards, signing, amendment, integrity) and implant records
 (`test/implant.test.ts`: device tied to a placement procedure, implant sites, one device per site until removal,
-step rules, front desk and other-practice refusals, database guards, signing, amendment keeping the device identity).
+step rules, front desk and other-practice refusals, database guards, signing, amendment keeping the device identity)
+and oral surgery (`test/surgery.test.ts`: surgical record tied to an extraction, approach and sinus rules, the
+completion rules, biopsy specimens and the waiting list, dentist-only results, front desk and other-practice refusals,
+telehealth refusal, database guards, signing, amendment keeping the specimen identity).
 
 ## Layout
 

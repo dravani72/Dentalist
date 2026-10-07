@@ -374,3 +374,19 @@ p.warn { background: var(--warn-bg); border: 1.5px dashed var(--c-planned); bord
 .pill.implant-stage.st-uncovered, .pill.implant-stage.st-abutment { color: var(--c-planned); border-style: dotted; }
 .pill.implant-stage.st-restored { color: var(--c-completed); }
 .pill.implant-stage.st-removed { color: var(--danger); border-style: double; border-width: 3px; }
+
+/* ---------------------------------------------------------------- oral surgery */
+.section-title { margin: 18px 0 6px; font-size: 16px; }
+.endo-form fieldset { border: 1px solid var(--line, #d0d4da); border-radius: 6px; padding: 6px 10px 8px; margin: 0 0 8px; }
+.endo-form fieldset legend { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 0 4px; }
+.endo-form label.check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.surgery-card.has-problem { border-left-width: 4px; }
+.surgery-problems { margin: 4px 0 8px; padding-left: 20px; }
+.surgery-problems b, div.surgery-problems > p b { text-decoration: underline; text-decoration-style: wavy; text-underline-offset: 3px; }
+div.surgery-problems { list-style: none; padding-left: 0; }
+.pill.specimen-status.sp-awaiting { color: var(--muted); border-style: dashed; }
+.pill.specimen-status.sp-overdue { color: var(--danger); border-style: double; border-width: 3px; }
+.pill.specimen-status.sp-benign { color: var(--c-completed); }
+.pill.specimen-status.sp-follow_up { color: var(--danger); border-style: dotted; border-width: 2px; }
+.specimen-card.sp-overdue { border-style: dashed; }
+.biopsy-worklist { margin: 0; padding-left: 18px; display: grid; gap: 4px; }

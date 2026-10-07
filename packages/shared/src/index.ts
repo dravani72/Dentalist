@@ -13,3 +13,4 @@ export * from './telehealth';
 export * from './perio';
 export * from './endo';
 export * from './implant';
+export * from './surgery';
