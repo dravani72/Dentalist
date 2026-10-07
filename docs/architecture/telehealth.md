@@ -63,9 +63,10 @@ Audit actions start with `telehealth.` (staff) and `portal.telehealth.` (portal)
 - **Evidence references live in the signed payload.** The handoff suggests reference columns on the assessment.
   Signed chart rows are frozen by `protect_chart_table` at verification, so the ids are written into the signed
   payload instead, where the signature covers them.
-- **LiveKit, self-hosted.** Drew asked for the media package the Telorovia application uses. Self-hosted LiveKit runs
-  on infrastructure the practice operates, so it adds no PHI vendor. LiveKit Cloud would be a new subprocessor and
-  needs a trust-boundary and BAA review first. Differences from Telorovia: join tokens carry only the room and an
+- **LiveKit, self-hosted.** Drew asked for the media package the Telorovia application uses, and decided on
+  2026-10-07 that it is self-hosted. It runs on infrastructure the practice operates, so it adds no PHI vendor.
+  LiveKit Cloud addresses (`*.livekit.cloud`) are refused at startup, because Cloud would be a new subprocessor
+  without a BAA. Differences from Telorovia: join tokens carry only the room and an
   opaque participant id (Telorovia put the user's email and ids in the token), there are no hidden observers, no
   data channel (chat) and no screen share, and the SDK logs errors only.
 - **Lobby on LiveKit.** LiveKit has no waiting room, so a waiting patient joins with no publish and no subscribe

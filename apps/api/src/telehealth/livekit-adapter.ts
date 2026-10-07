@@ -26,6 +26,24 @@ export interface LiveKitConfig {
   egressFilepath?: string;
 }
 
+/**
+ * Drew decided LiveKit is self-hosted (2026-10-07). LiveKit Cloud would carry patient audio and video
+ * through a vendor with no BAA, so its addresses are refused outright rather than left to configuration.
+ */
+export function assertSelfHosted(cfg: Pick<LiveKitConfig, 'url' | 'apiUrl'>) {
+  for (const u of [cfg.url, cfg.apiUrl]) {
+    let host: string;
+    try {
+      host = new URL(u).hostname.toLowerCase();
+    } catch {
+      throw new Error('LIVEKIT_URL and LIVEKIT_API_URL must be valid URLs');
+    }
+    if (host === 'livekit.cloud' || host.endsWith('.livekit.cloud')) {
+      throw new Error('LiveKit must be self-hosted: LiveKit Cloud addresses are refused (no BAA)');
+    }
+  }
+}
+
 /** Only camera and microphone; no screen share, so nothing else on a device can be shown or captured. */
 const SOURCES = [TrackSource.CAMERA, TrackSource.MICROPHONE];
 
@@ -43,9 +61,9 @@ function permission(g: Pick<RtcGrant, 'canPublish' | 'canSubscribe' | 'lobby'>):
 }
 
 /**
- * LiveKit (the SFU the Telorovia application uses) behind the core media boundary. Run self-hosted, it
- * adds no vendor: media stays on infrastructure the practice operates. LiveKit Cloud would be a new
- * PHI subprocessor and needs a trust-boundary and BAA review before use (AGENTS.md).
+ * LiveKit (the SFU the Telorovia application uses) behind the core media boundary. It runs self-hosted,
+ * so it adds no vendor: media stays on infrastructure the practice operates. LiveKit Cloud is refused
+ * (see assertSelfHosted).
  *
  * Grants come from the database through the service, never from the browser. Tokens carry only the
  * room name and the opaque participant id: no name, email or metadata. There is no data channel
@@ -58,6 +76,7 @@ export class LiveKitRtcAdapter implements RtcAdapter {
   private readonly webhooks: WebhookReceiver;
 
   constructor(private readonly cfg: LiveKitConfig) {
+    assertSelfHosted(cfg);
     this.rooms = new RoomServiceClient(cfg.apiUrl, cfg.apiKey, cfg.apiSecret);
     this.egress = new EgressClient(cfg.apiUrl, cfg.apiKey, cfg.apiSecret);
     this.webhooks = new WebhookReceiver(cfg.apiKey, cfg.apiSecret);
