@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { APP_CONFIG, AppConfig, loadConfig } from './config';
@@ -31,6 +32,8 @@ import { ERX_PARTNER } from './prescribing/erx-partner';
 import { FakeErxPartner } from './prescribing/fake-erx-partner';
 import { PrescribingService } from './prescribing/prescribing.service';
 import { PrescribingController } from './prescribing/prescribing.controller';
+import { EpcsService } from './prescribing/epcs.service';
+import { EpcsController, ErxSandboxController } from './prescribing/epcs.controller';
 import { LogOnlyMessageSender, MESSAGE_SENDER, OutboxWorker } from './outbox/outbox.worker';
 import { TOTP_CLOCK } from './crypto/totp';
 import { StaffAdminService } from './admin/staff-admin.service';
@@ -78,13 +81,15 @@ export class AppModule {
     if (process.env.NODE_ENV === 'production' && config.rtcProvider === 'livekit' && config.livekit.apiSecret === 'secret') {
       throw new Error('LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set in production');
     }
+    const erxPartner = overrides.erxPartner ?? new FakeErxPartner({ stateFile: path.resolve(config.localKeyDir, '..', 'erx-sandbox.json') });
     const rtc = overrides.rtcAdapter ?? (config.rtcProvider === 'livekit' ? new LiveKitRtcAdapter(config.livekit) : new FakeRtcAdapter());
     const providers: Provider[] = [
       { provide: APP_CONFIG, useValue: config },
       { provide: FIELD_CIPHER, useValue: cipher },
       { provide: RECORD_SIGNER, useValue: new LocalRecordSigner(config.localKeyDir) },
       { provide: MEDIA_STORAGE, useValue: new LocalEncryptedStorage(config.localMediaDir, cipher) },
-      { provide: ERX_PARTNER, useValue: overrides.erxPartner ?? new FakeErxPartner() },
+      // The sandbox keeps enrollments and access in a file next to the local keys, so the seed and the dev server share them.
+      { provide: ERX_PARTNER, useValue: erxPartner },
       { provide: CLEARINGHOUSE, useValue: overrides.clearinghouse ?? new FakeClearinghouse() },
       { provide: RTC_ADAPTER, useValue: rtc },
       { provide: MESSAGE_SENDER, useValue: overrides.messageSender ?? new LogOnlyMessageSender() },
@@ -107,6 +112,7 @@ export class AppModule {
       ImagingService,
       MediaService,
       PrescribingService,
+      EpcsService,
       BillingService,
       ClaimsService,
       OutboxWorker,
@@ -124,6 +130,8 @@ export class AppModule {
     const devTools = config.devTools && process.env.NODE_ENV !== 'production';
     // The browser stand-in exists only with the sandbox media server, and never in production.
     const rtcSim = rtc instanceof FakeRtcAdapter && process.env.NODE_ENV !== 'production';
+    // Likewise the stand-in for the e-prescribing partner's own screens (identity proofing, signing window).
+    const erxSandbox = erxPartner instanceof FakeErxPartner && process.env.NODE_ENV !== 'production';
     return {
       module: AppModule,
       controllers: [
@@ -135,6 +143,7 @@ export class AppModule {
         ImagingController,
         MediaController,
         PrescribingController,
+        EpcsController,
         AuditController,
         BillingController,
         PortalAuthController,
@@ -146,6 +155,7 @@ export class AppModule {
         RtcWebhookController,
         PortalTelehealthController,
         ...(rtcSim ? [RtcSimController] : []),
+        ...(erxSandbox ? [ErxSandboxController] : []),
         ...(devTools ? [DevController, PortalDevController] : []),
       ],
       providers,

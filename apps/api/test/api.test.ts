@@ -332,11 +332,6 @@ describe('e-prescribing', () => {
     indication: 'Dental infection',
   };
 
-  it('keeps controlled substances off until the EPCS phase', async () => {
-    const res = await amy.post('/api/prescriptions', { ...draft, patientId, controlledSchedule: 'II' });
-    expect(res.status).toBe(403);
-  });
-
   it('screens against allergies and requires acknowledgement', async () => {
     const res = await jane.post('/api/prescriptions', { ...draft, patientId });
     expect(res.status).toBe(201);

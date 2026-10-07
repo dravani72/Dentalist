@@ -258,8 +258,6 @@ export const PrescriptionDraftRequest = z.object({
   refills: z.number().int().min(0).max(11),
   substitutionAllowed: z.boolean().default(true),
   indication: z.string().trim().min(2).max(500),
-  /** DEA schedule when controlled. Controlled prescribing is disabled until the EPCS phase. */
-  controlledSchedule: z.enum(['II', 'III', 'IV', 'V']).nullable().default(null),
   pharmacyPreferenceId: uuid.optional(),
 });
 export type PrescriptionDraftRequest = z.infer<typeof PrescriptionDraftRequest>;

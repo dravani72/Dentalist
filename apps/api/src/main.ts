@@ -8,6 +8,7 @@ import { logger } from './common/logger';
 import { ERX_PARTNER } from './prescribing/erx-partner';
 import { FakeErxPartner } from './prescribing/fake-erx-partner';
 import { PrescribingService } from './prescribing/prescribing.service';
+import { EpcsService } from './prescribing/epcs.service';
 import { OutboxWorker } from './outbox/outbox.worker';
 import { FakeRtcAdapter, RTC_ADAPTER } from './telehealth/rtc-adapter';
 import { TelehealthService } from './telehealth/telehealth.service';
@@ -37,8 +38,10 @@ export async function createApp(overrides: AppOverrides = {}): Promise<INestAppl
   const partner = app.get(ERX_PARTNER);
   if (partner instanceof FakeErxPartner) {
     const rx = app.get(PrescribingService);
+    const epcs = app.get(EpcsService);
     partner.callback = async (evt) => {
-      await rx.handlePartnerEvent(evt, 'sandbox-callback').catch((err) => logger.warn({ msg: 'sandbox callback failed', err }, 'Erx'));
+      const handled = evt.kind === 'epcs_session' ? epcs.handleSessionEvent(evt, 'sandbox-callback') : rx.handlePartnerEvent(evt, 'sandbox-callback');
+      await handled.catch((err) => logger.warn({ msg: 'sandbox callback failed', err }, 'Erx'));
     };
   }
 

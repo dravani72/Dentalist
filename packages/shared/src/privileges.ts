@@ -22,6 +22,11 @@ export const PRIVILEGES = [
   'prescription.prepare',
   'prescription.sign_noncontrolled',
   'prescription.sign_controlled',
+  /**
+   * One of the people who set who may sign controlled prescriptions (21 CFR 1311.125): proposing,
+   * approving (a second person, with their own partner two-factor credential) and revoking EPCS access.
+   */
+  'epcs.manage_access',
   /** See balances, ledgers, insurance, estimates and claims. */
   'billing.read',
   /** Post charges for signed procedures and correct their billing codes. */
@@ -83,6 +88,7 @@ export const STEP_UP_PRIVILEGES: readonly Privilege[] = [
   'encounter.sign',
   'prescription.sign_noncontrolled',
   'prescription.sign_controlled',
+  'epcs.manage_access',
   'security.break_glass',
   /** Sending a lab prescription (or sending a case back) is a dentist's order. */
   'lab_case.authorize',
@@ -186,6 +192,7 @@ export const ROLE_TEMPLATES: Record<RoleTemplate, readonly Privilege[]> = {
     'schedule.write',
     'admin.staff',
     'audit.read',
+    'epcs.manage_access',
     'portal.manage',
     'portal.respond',
     'consent.manage',

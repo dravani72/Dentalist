@@ -497,7 +497,10 @@ describe('telehealth prescribing (AT15, AT16)', () => {
     const ph = await frank.get('/api/pharmacies?zip=62701');
     const pref = await frank.post(`/api/patients/${p.id}/pharmacies`, { partnerPharmacyId: ph.body[0].partnerPharmacyId, rank: 'primary' });
     const draft = { patientId: p.id, encounterId, drugKey: 'amoxicillin-500-cap', drugDisplay: 'Amoxicillin 500 mg capsule', sig: 'Take 1 capsule three times daily for 7 days', quantity: 21, quantityUnit: 'capsule', daysSupply: 7, refills: 0, indication: 'Dental infection' };
-    expect((await amy.post('/api/prescriptions', { ...draft, controlledSchedule: 'II' })).status).toBe(403);
+    // Controlled drugs (the partner's drug database says so) are refused on a telehealth visit.
+    const opioid = await amy.post('/api/prescriptions', { ...draft, drugKey: 'hydrocodone-apap-5-325-tab', drugDisplay: 'Hydrocodone/acetaminophen 5/325 mg tablet', daysSupply: 3, quantity: 12 });
+    expect(opioid.status).toBe(403);
+    expect(opioid.body.details.reason).toBe('controlled_telehealth_prescribing_disabled');
     const controlled = await amy.post(`/api/telehealth/cases/${caseId}/evaluate`, { purpose: 'prescribe_controlled' });
     expect(controlled.body.outcome).toBe('DENY');
     expect(controlled.body.reasons.map((r: { code: string }) => r.code)).toContain('controlled_telehealth_prescribing_disabled');

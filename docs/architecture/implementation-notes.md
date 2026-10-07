@@ -31,6 +31,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Implant records (Phase 6): implant as a persistent device (manufacturer, catalog, lot/serial, size, torque, ISQ, grafts) and its later steps (uncovery, abutment, restoration, checks, complications, removal) | 0012; `apps/api/src/charting/implant.service.ts`, `implant-rows.ts`, `entry-kinds.ts` (`implant`, `implant_event`); `packages/shared/src/implant.ts`; `apps/web/src/pages/ImplantsTab.tsx`. See "Implant records" below |
 | Lab cases (Phase 6): dental labs, lab prescriptions (units by tooth or arch, material, shade, impression, enclosures), dentist authorization, the round trip back and forth, seating, and the practice-wide tracking list | 0014; `apps/api/src/lab/*`; `packages/shared/src/lab.ts`; `apps/web/src/pages/LabCases.tsx`, `LabCasesTab.tsx`. See "Lab cases" below |
 | Diagnostic imaging (Phase 6): DICOM studies (CBCT volumes and 2D DICOM radiographs) kept as original files plus a viewing volume, patient identity check, the in-browser viewer with measurements, the dentist's read, and the unread worklist | 0015; `apps/api/src/imaging/*`; `packages/shared/src/dicom.ts`, `imaging.ts`; `apps/web/src/pages/ImagingTab.tsx`, `components/VolumeViewer.tsx`, `Patients.tsx` (worklist). See "Diagnostic imaging" below |
+| Controlled-substance prescribing (Phase 7): DEA registrations, enrollment with the partner, two-person EPCS access, signing in the partner's certified window | 0016; `apps/api/src/prescribing/epcs.service.ts`, `epcs.controller.ts`, `erx-partner.ts`, `fake-erx-partner.ts`; `packages/shared/src/epcs.ts`; `apps/web/src/pages/admin/EpcsAdmin.tsx`, `PrescriptionsTab.tsx`, `components/PartnerWindow.tsx`. See "Controlled-substance prescribing (EPCS)" below |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
 ## Deliberate deviations
@@ -49,8 +50,9 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
   `LocalFieldCipher` (AES-256-GCM) for KMS envelope encryption, encrypted local files for S3, the in-process outbox
   worker for SQS, password + TOTP for Cognito. Each sits behind an interface so the production adapter is a drop-in.
 - **`FakeErxPartner` instead of DoseSpot.** Implements search, screening (allergy cross-reactivity, interactions),
-  idempotent transmit and an asynchronous status callback over the real signed webhook path. Controlled substances
-  are refused until the certified EPCS phase.
+  idempotent transmit and an asynchronous status callback over the real signed webhook path, plus the partner's EPCS
+  steps (drug schedules, identity proofing, signing tokens, logical access, the two-factor signing window). It is not
+  certified and nothing leaves the process.
 - **Video: self-hosted LiveKit or a sandbox.** `LiveKitRtcAdapter` (`RTC_PROVIDER=livekit`) gives real video;
   `FakeRtcAdapter` (default, used by tests) carries no media. Only synthetic jurisdictions ZZ and ZY are enabled.
   See `telehealth.md`.
@@ -310,6 +312,66 @@ each. Plain x-rays and photos (PNG, JPEG, SVG) stay where they were, on the Char
   two measurements, and Samuel Okafor's scan from nine days ago, not yet read (overdue). Their DICOM headers carry
   the chart's own identity, and their descriptions say SIMULATED.
 
+## Controlled-substance prescribing (EPCS)
+
+Controlled substances (DEA Schedules II to V) are prescribed only through the e-prescribing partner's certified EPCS
+flow (MASTER_SPEC §15.4, 21 CFR 1311). We keep what the practice is responsible for and check it first; the partner
+does identity proofing, holds the two-factor credential, makes the signature and keeps the DEA signing audit.
+
+- **The schedule comes from the partner's drug database** (`lookupDrug`) when a draft is saved, never from the
+  browser; the `controlledSchedule` field the client used to send is gone. The draft stores the schedule and class
+  (opioid, benzodiazepine, other).
+- **Rules on the content**, in `packages/shared/src/epcs.ts` and again in the database: no refills on Schedule II, at
+  most five on III to V (federal), and at most a 7-day supply for opioids (a practice default). A controlled
+  prescription is never drafted from a telehealth visit (`controlled_telehealth_prescribing_disabled`).
+- **DEA registrations** are `credential` rows (`dea_registration`): number checked for format and check digit,
+  encrypted (`identifier_enc`, bound to the holder) and shown as `•••••••563`; state, schedules and expiry are
+  required. They count only after another administrator records a verification (the existing step, with step-up).
+- **Enrollment** (`epcs_enrollment`): an access manager enrolls a prescriber or an access manager with the partner;
+  identity proofing and the signing token happen on the partner's pages, and we copy their status (`Refresh from
+  partner`). Nothing about it is set by hand.
+- **Two-person logical access** (`epcs_access_grant`, 21 CFR 1311.125): someone with the new `epcs.manage_access`
+  privilege (practice managers by default) proposes access for a prescriber, under one verified DEA registration, for
+  some of its schedules, after checking the prescriber has `prescription.sign_controlled` and a verified license in
+  that state. A **different** access manager, never the prescriber, approves it in the partner's two-factor window;
+  the grant turns active only when the partner reports that authentication. At least one of the two must be a DEA
+  registrant with a signing token. Either access manager can revoke at once (no step-up, so taking access away is
+  never slowed down), and a prescriber can give up their own. Rows only move forward (pending → active or rejected,
+  active → revoked); the database refuses anything else, a deletion, or an approver who is the proposer or prescriber.
+- **Signing.** `POST /prescriptions/:id/epcs/start` needs `prescription.sign_controlled` and our step-up (in
+  addition to the partner's two factors, never instead of them), then checks, every time: a verified license in the
+  location's state; an active, unexpired DEA registration there covering the schedule; identity proofed with a bound
+  token; active access for that registration and schedule; the schedule unchanged at the partner; the content rules;
+  the PDMP attestation for opioids and benzodiazepines; every screening alert acknowledged; an EPCS-capable pharmacy;
+  an NPI. It then locks the content, hashes it (including the schedule, license and DEA registration) and moves it to
+  `EPCS_PENDING`, and opens the partner's signing window (`epcs_session`) with the full prescription and the hash.
+  The prescription never enters our transmission queue.
+- **The partner's report** (`kind: "epcs_session"` on the signed webhook, or the sandbox callback) is accepted only if
+  the person who authenticated is the prescriber who opened it, with at least two distinct factors, before the window
+  expired, over the same content hash, and the hash recomputed from the stored row still matches. Then the
+  prescription is `SENT` with `signed_at` from the partner and events `SIGNED` and `SENT`; the pharmacy's
+  acknowledgement makes it `ACCEPTED` as before. Anything else marks the session `failed` and the prescription
+  `ERROR`, with a note to call the pharmacy, and audits an error. A declined or timed-out window leaves it locked: the
+  same prescriber can open a new window (authority checked again) or anyone who prepares prescriptions can cancel it,
+  which closes the window at the partner.
+- **Evidence.** A finished `epcs_session` keeps the factors, the partner's signature reference and the content hash,
+  and can't change; `signed_at` is filled once. Audit events: `credential.create`, `epcs.enroll`,
+  `epcs.enrollment_sync`, `epcs.access_propose`, `epcs.access_approve_start`, `epcs.access_approve`,
+  `epcs.access_reject`, `epcs.access_revoke`, `prescription.epcs_start`, `prescription.epcs_reopen`,
+  `epcs.session_declined`/`_expired`, `prescription.epcs_sign` (success or error), and denials with their reason.
+- **Screens.** The **EPCS** page (for `epcs.manage_access`) lists prescribers and access managers with their DEA
+  registrations, enrollment and access, and does every step above. On **Prescriptions**, controlled favorites are
+  marked, a controlled card shows its `C-II` mark (text with a double border), lists only EPCS-capable pharmacies,
+  asks for the PDMP check, explains what is missing when the prescriber can't sign yet, and opens the partner window.
+  In the sandbox the window is a dialog marked SANDBOX; in production it is the partner's own embedded page and our
+  app never sees the PIN or token code.
+- **For legal and clinical review before use with real patients:** the 7-day opioid limit and the PDMP attestation
+  are practice defaults, not each state's rule; state controlled-substance registrations are not modelled; DEA "N"
+  (non-narcotic) schedules are folded into the numbered ones.
+- The seed gives Amy Jones and Marcus Lee synthetic, format-valid DEA numbers (not real registrations), enrolls them
+  and Pat Morgan with the sandbox, approves Amy's access (proposed by Amy, approved by Pat) and leaves Marcus's waiting.
+  Mei Tanaka has a hydrocodone prescription Amy signed in the window; Priya Natarajan has a triazolam draft.
+
 ## Not built yet
 
 - Portal pieces still missing: online payment (needs a payment processor choice), referral and document downloads,
@@ -342,7 +404,12 @@ each. Plain x-rays and photos (PNG, JPEG, SVG) stay where they were, on the Char
   shows permanent teeth only).
   Perio gaps: probing around implants (needs implant tooth instances), voice entry (needs a speech vendor with a
   BAA), a perio maintenance recall interval, and printing the chart for the patient or a referral.
-- EPCS (Phase 7) and AI assistance (Phase 8).
+- EPCS gaps: refill requests, CancelRx and change requests from pharmacies, and medication history from the partner
+  (next part of Phase 7); the real DoseSpot EPCS adapter (needs the contract, BAA and sandbox credentials); reading
+  the state PDMP through an integration rather than an attestation; state-specific limits; partner webhooks for a
+  revoked token or failed identity check (status is pulled today); the partner's DEA-required reports; controlled
+  prescribing by telehealth (stays off).
+- AI assistance (Phase 8).
 - Production adapters: Cognito, KMS, S3, SQS, DoseSpot. Terraform is a skeleton and has never been applied.
 - Backup/restore drills and monitoring (MVP item 12 covers tenant isolation, access control and PHI-safe logging
   in tests; backup/restore needs the AWS environment).

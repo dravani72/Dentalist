@@ -17,3 +17,4 @@ export * from './surgery';
 export * from './lab';
 export * from './dicom';
 export * from './imaging';
+export * from './epcs';

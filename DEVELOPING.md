@@ -37,14 +37,14 @@ code for `.test` accounts (the dev endpoint refuses anything else and is off in 
 
 | Account | Role | Notes |
 | --- | --- | --- |
-| amy.jones@maple.example.test | Dentist | IL license, can verify, sign, prescribe; ZZ license for telehealth |
-| marcus.lee@maple.example.test | Dentist | IL license; ZZ license for telehealth |
+| amy.jones@maple.example.test | Dentist | IL license, can verify, sign, prescribe; ZZ license for telehealth; DEA registrant with approved EPCS access (C-II to C-V) and an EPCS access manager |
+| marcus.lee@maple.example.test | Dentist | IL license; ZZ license for telehealth; DEA registrant whose EPCS access waits for a second approver |
 | jane.smith@maple.example.test | Dental assistant | charts, cannot verify or sign |
 | rosa.diaz@maple.example.test | Hygienist | |
 | frank.ito@maple.example.test | Front desk | schedule, demographics, insurance, takes payments; no clinical actions |
 | bea.carter@maple.example.test | Billing | charges, adjustments, claims, fee schedules (fee_schedule.manage granted in the fixture) |
 | cora.webb@maple.example.test | Compliance officer | audit log, access reports, break-glass |
-| pat.morgan@maple.example.test | Practice manager | Staff tab: add staff, privileges, licenses, working hours, time off, sign-in resets |
+| pat.morgan@maple.example.test | Practice manager | Staff tab: add staff, privileges, licenses, working hours, time off, sign-in resets; EPCS tab: DEA registrations and approving controlled-signing access |
 | omar.khan@riverbend.example.test | Dentist, second practice | used to prove tenant isolation |
 
 ### Patient portal
@@ -60,6 +60,20 @@ screen shows it for `.test` addresses.
 Grace Okafor has an unused caregiver invitation for Samuel Okafor. Staff manage access on the patient's
 **Portal & forms** tab and work patient messages and requests in **Portal inbox**. See
 `docs/architecture/patient-portal.md`.
+
+### Controlled-substance prescribing (EPCS)
+
+The e-prescribing partner is a sandbox inside the API (`FakeErxPartner`); it keeps enrollments and access in
+`apps/api/var/erx-sandbox.json` so the seed and the dev server share them. Its certified signing window is shown as a
+dialog marked SANDBOX: the partner PIN is **1311**, and the "show sandbox token" link reads the person's sandbox
+token (separate from the authenticator used to sign in).
+
+1. As pat.morgan: **EPCS** → Marcus Lee's access waits for a second approver. **Approve in partner window**, enter
+   your authenticator code, then the PIN and your sandbox token code. His access turns Approved.
+2. As amy.jones: open Priya Natarajan → **Prescriptions**. Her triazolam (C-IV) draft lists only pharmacies that
+   accept electronic controlled prescriptions. Tick the PDMP check and the attestation, **Sign in EPCS window**, and
+   finish with the PIN and Amy's sandbox token. It is sent and then accepted by the pharmacy.
+3. Mei Tanaka already has a hydrocodone (C-II) prescription Amy signed this way.
 
 ### Telehealth
 

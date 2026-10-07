@@ -44,7 +44,9 @@ was added and someone else signed in on the same screen).
   does the license become `active`.
 - Suspend, revoke or mark expired takes effect on the holder's next signing or prescribing attempt.
 - NPIs are recorded as active straight away: they are public registry numbers and grant nothing.
-- DEA registrations are not managed here; they belong to the EPCS phase.
+- DEA registrations are managed on the **EPCS** page, not the Staff page: the number is stored encrypted and shown
+  only as its last three digits, and it goes through the same "Record verification" step (another administrator,
+  with a step-up). See "Controlled-substance prescribing (EPCS)" in `implementation-notes.md`.
 
 ## Working hours and time off
 

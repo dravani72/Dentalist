@@ -185,6 +185,8 @@ export function assertTransition<S extends string>(table: readonly Transition<S>
 
 export const PRESCRIPTION_STATUSES = [
   'DRAFT',
+  /** Controlled: content locked and hashed, waiting for the prescriber to sign in the partner's window. */
+  'EPCS_PENDING',
   'SIGNED',
   'QUEUED',
   'SENT',
@@ -198,5 +200,8 @@ export const PRESCRIPTION_TRANSITIONS: readonly Transition<PrescriptionStatus>[]
   { from: 'DRAFT', to: 'SIGNED', privilege: 'prescription.sign_noncontrolled' },
   { from: 'DRAFT', to: 'CANCELLED', privilege: 'prescription.prepare' },
   { from: 'SIGNED', to: 'QUEUED', privilege: 'prescription.sign_noncontrolled' },
+  { from: 'DRAFT', to: 'EPCS_PENDING', privilege: 'prescription.sign_controlled' },
+  { from: 'EPCS_PENDING', to: 'CANCELLED', privilege: 'prescription.prepare' },
+  // EPCS_PENDING → SENT happens only on the partner's report of a completed two-factor signing.
   // the rest are driven by the transmission worker and partner callbacks
 ];
