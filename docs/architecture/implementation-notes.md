@@ -30,6 +30,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Oral surgery (Phase 6): structured extraction record (approach, impaction, flap, bone removal, sectioning, socket graft, sinus, hemostasis, sutures, complications, post-op), biopsy specimens, pathology results and the waiting list | 0013; `apps/api/src/charting/surgery.service.ts`, `surgery-rows.ts`, `entry-kinds.ts` (`surgery`, `specimen`, `specimen_result`); `packages/shared/src/surgery.ts`; `apps/web/src/pages/SurgeryTab.tsx`, `Patients.tsx` (worklist). See "Oral surgery" below |
 | Implant records (Phase 6): implant as a persistent device (manufacturer, catalog, lot/serial, size, torque, ISQ, grafts) and its later steps (uncovery, abutment, restoration, checks, complications, removal) | 0012; `apps/api/src/charting/implant.service.ts`, `implant-rows.ts`, `entry-kinds.ts` (`implant`, `implant_event`); `packages/shared/src/implant.ts`; `apps/web/src/pages/ImplantsTab.tsx`. See "Implant records" below |
 | Lab cases (Phase 6): dental labs, lab prescriptions (units by tooth or arch, material, shade, impression, enclosures), dentist authorization, the round trip back and forth, seating, and the practice-wide tracking list | 0014; `apps/api/src/lab/*`; `packages/shared/src/lab.ts`; `apps/web/src/pages/LabCases.tsx`, `LabCasesTab.tsx`. See "Lab cases" below |
+| Diagnostic imaging (Phase 6): DICOM studies (CBCT volumes and 2D DICOM radiographs) kept as original files plus a viewing volume, patient identity check, the in-browser viewer with measurements, the dentist's read, and the unread worklist | 0015; `apps/api/src/imaging/*`; `packages/shared/src/dicom.ts`, `imaging.ts`; `apps/web/src/pages/ImagingTab.tsx`, `components/VolumeViewer.tsx`, `Patients.tsx` (worklist). See "Diagnostic imaging" below |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
 ## Deliberate deviations
@@ -258,6 +259,57 @@ procedure (the crown prep, the seat) is still recorded and signed in its visit a
   upper night guard for Priya waiting for Dr. Jones to authorize. The older cases are moved back in time by the seed
   (which disables the history guard for that one step); everything else goes through the lab service.
 
+## Diagnostic imaging
+
+The **Imaging** tab on a patient record lists the patient's DICOM studies with a viewer and the dentist's read of
+each. Plain x-rays and photos (PNG, JPEG, SVG) stay where they were, on the Chart tab.
+
+- **A study is one DICOM series** (`imaging_study`, a chart entry in its visit): a CBCT volume or a 2D DICOM
+  radiograph (panoramic, cephalometric, intraoral). Upload is `POST /encounters/:id/imaging-studies` with the files of
+  one series (base64, up to 600 files, a 200 MB body limit on this route only). `media.upload` records it.
+- **The original files are kept unaltered**, each encrypted in the media store under an opaque key with its SHA-256;
+  the study row lists the keys and digests. A **viewing volume** is made from them (slices sorted by patient position,
+  rescale slope and intercept applied, MONOCHROME1 inverted, stored as int16) and kept the same way with its own
+  digest. The database refuses any change to a study's files or digests, on an edit or an amended copy.
+- **The DICOM reader** (`packages/shared/src/dicom.ts`) is ours and small: Part 10 files, implicit or explicit VR
+  little endian, 8- or 16-bit greyscale. Compressed transfer syntaxes (JPEG, JPEG 2000, RLE), big endian, colour, and
+  images over 1024 × 1024 or 1024 slices are refused with a clear error, not guessed at. Nothing it reads is logged.
+  The DICOM modality must fit the chosen kind (CT for a CBCT; PX, DX or CR for a panoramic, and so on), a CBCT must
+  have more than one slice and a 2D study exactly one, and the same series can't be filed twice.
+- **Patient identity.** The header's patient ID is compared with the chart number, or else its family name and birth
+  date with the chart. If they don't match, or the files carry no identity, the upload is refused (409) naming
+  which fields differ, never their values, until the uploader says why it is still this patient. The study keeps the
+  result (`matched`, `confirmed_mismatch`, `confirmed_unidentified`) and the reason; the header identity itself stays
+  only in the original files.
+- **Header facts** kept on the study: DICOM modality, study and series UIDs, device, acquisition time (UTC), kV, mA,
+  exposure, size, voxel size, the scanner's window, the region (both arches, maxilla, mandible, localized, TMJ, sinus,
+  other) and the teeth (as tooth instances; a localized scan needs teeth) and who took it.
+- **Viewing** is through `GET /imaging-studies/:id/volume-url`: a 60-second signed link with no PHI in it, audited as
+  `imaging_study.view` when issued (any `patient.read` role, with patient access). The browser decodes the volume and
+  keeps it in memory only while the viewer is open.
+- **The viewer** shows axial, coronal and sagittal slices through a crosshair (click a view to move it), slice
+  sliders, window presets (as scanned, bone, soft tissue, implants and metal) with level and width, and straight-line
+  measurements in millimetres from the voxel size. Patient right is on the left of the axial and coronal views and
+  superior is up. A 2D study shows its one image.
+- **The read** (`imaging_read`, a chart entry) is recorded by a dentist (`diagnosis.create`) in the visit where they
+  review the scan: findings, impression, incidental findings with a required follow-up or referral, a note and up to
+  20 measurements. A CBCT read must attest the **whole volume** was reviewed, not only the area of interest (API
+  and database). Measurements are stored by voxel coordinates and the server works out the millimetres again; a
+  figure sent by the browser is ignored. One live read per study; changes are edits, or amendments once signed.
+  Measurements are a jsonb array checked by Zod and bounded by the database; they are part of the signed payload.
+- **Unread worklist.** `GET /imaging/unread` lists studies with no read at the caller's locations (clinical staff
+  only; break-glass patients are left out). The Patients page shows it when non-empty; a study waiting more than 7
+  days is marked overdue.
+- **Who does what**: `media.upload` uploads and voids studies and edits their region, description and note;
+  `diagnosis.create` records reads; `patient.read` views. Studies and reads are signed with the visit.
+- **Colorblind-safe**: read status is written out with a mark and border (◷ not read yet, dashed; ⚠ read overdue,
+  double; ✓ read), an identity that didn't match is marked ⚠ with a wavy underline, and the viewer's crosshair is
+  dashed with measurement lines labelled in text.
+- The seed adds two synthetic CBCTs drawn by `apps/api/src/imaging/phantom.ts` (a lower jaw with teeth, the
+  inferior alveolar canals and, for Hector, the #30 implant and crown): Hector Alvarez's 2025 implant check, read with
+  two measurements, and Samuel Okafor's scan from nine days ago, not yet read (overdue). Their DICOM headers carry
+  the chart's own identity, and their descriptions say SIMULATED.
+
 ## Not built yet
 
 - Portal pieces still missing: online payment (needs a payment processor choice), referral and document downloads,
@@ -268,7 +320,12 @@ procedure (the crown prep, the seat) is still recorded and signed in its visit a
   primary payment), claim status inquiry (276/277), statements by mail, payment plans, collections.
 - Telehealth gaps: LiveKit audio egress into the encrypted media store, transcription, the replay buffer, referral
   records, telehealth billing codes, real state rules (each needs legal review), an approved triage protocol.
-- Phase 6 still to come: DICOM/CBCT viewing.
+- Imaging gaps: compressed DICOM (JPEG, JPEG 2000, RLE; needs a decoder library), uploads larger than the
+  200 MB body limit (needs direct, chunked upload to object storage), downloading or sending the original files
+  (export to a specialist), DICOMweb or a PACS connection (each is a new vendor needing a BAA and an adapter),
+  oblique and panoramic reconstructions, 3D rendering, nerve tracing and implant planning, annotations other than
+  straight lines, a radiology referral when the dentist wants a specialist read of a CBCT, and AI assistance (Phase 8).
+  Measurements assume an axis-aligned volume (no gantry tilt or oblique orientation).
   Lab case gaps: electronic case submission and status updates from a lab portal (each lab is a new vendor that
   needs a BAA and an adapter), sending scan files or the attached images to the lab electronically, lab invoices and remake cost tracking, linking units
   to plan items in the form (the API accepts `plannedProcedureId`), and per-unit status for multi-unit cases. Flags

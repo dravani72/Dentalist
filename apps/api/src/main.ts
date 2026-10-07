@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import type { NextFunction, Request, Response } from 'express';
+import { json, type NextFunction, type Request, type Response } from 'express';
 import { AppModule, AppOverrides } from './app.module';
 import { logger } from './common/logger';
 import { ERX_PARTNER } from './prescribing/erx-partner';
@@ -15,6 +15,8 @@ import { TelehealthService } from './telehealth/telehealth.service';
 export async function createApp(overrides: AppOverrides = {}): Promise<INestApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.register(overrides), { rawBody: true, logger });
   app.setGlobalPrefix('api');
+  // A DICOM series is many files; its upload gets a larger body limit than everything else.
+  app.use('/api/encounters/:id/imaging-studies', json({ limit: '200mb' }));
   // LiveKit posts webhooks as application/webhook+json; parsing them as JSON keeps the raw body for signature checks.
   app.useBodyParser('json', { limit: '20mb', type: ['application/json', 'application/webhook+json'] });
   app.use((req: Request, res: Response, next: NextFunction) => {

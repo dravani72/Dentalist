@@ -4,7 +4,7 @@
  * billing projection) are deliberately left out of the canonical form: they are not part of
  * what the dentist attests to.
  */
-export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media' | 'perio' | 'endo_dx' | 'endo_test' | 'endo_canal' | 'implant' | 'implant_event' | 'surgery' | 'specimen' | 'specimen_result';
+export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media' | 'perio' | 'endo_dx' | 'endo_test' | 'endo_canal' | 'implant' | 'implant_event' | 'surgery' | 'specimen' | 'specimen_result' | 'imaging_study' | 'imaging_read';
 
 export interface EntryKindDef {
   table: string;
@@ -21,6 +21,8 @@ export interface EntryKindDef {
    * measurements). They are read with the entry, attested with it, and never copied as columns.
    */
   derived?: { sql: string; columns: readonly string[] };
+  /** jsonb columns holding arrays, sent to Postgres as JSON text rather than as array literals. */
+  json?: readonly string[];
 }
 
 export const PROCEDURE_DETAIL_COLUMNS = [
@@ -129,6 +131,44 @@ export const SPECIMEN_DETAIL_COLUMNS = [
   'container_label',
   'note',
 ] as const;
+
+export const IMAGING_STUDY_COLUMNS = [
+  'study_id',
+  'modality',
+  'region',
+  'tooth_instance_ids',
+  'description',
+  'dicom_modality',
+  'study_uid',
+  'series_uid',
+  'device_manufacturer',
+  'device_model',
+  'operator_id',
+  'acquired_at',
+  'kvp',
+  'tube_current_ma',
+  'exposure_ms',
+  'rows',
+  'columns',
+  'slices',
+  'voxel_x_mm',
+  'voxel_y_mm',
+  'voxel_z_mm',
+  'patient_match',
+  'identity_confirmation',
+  'original_sha256s',
+  'original_bytes',
+  'volume_sha256',
+  'note',
+] as const;
+
+export const IMAGING_READ_COLUMNS = ['entire_volume_reviewed', 'findings', 'impression', 'incidental_findings', 'referral', 'measurements', 'note'] as const;
+
+/** The displayed tooth numbers a study covers (display only; the stored keys are tooth instances). */
+const IMAGING_TEETH_SQL = `
+  (SELECT coalesce(array_agg(dp.universal ORDER BY dp.universal), '{}')
+     FROM tooth_instance ti JOIN dental_position dp ON dp.id = ti.dental_position_id
+    WHERE ti.id = ANY(e.tooth_instance_ids)) AS teeth`;
 
 export const SPECIMEN_RESULT_DETAIL_COLUMNS = ['received_on', 'lab_accession', 'category', 'diagnosis', 'follow_up', 'patient_informed', 'note'] as const;
 
@@ -321,6 +361,25 @@ export const ENTRY_KINDS: Record<EntryKind, EntryKindDef> = {
     hasVersion: true,
     supersedable: true,
   },
+  imaging_study: {
+    table: 'imaging_study',
+    // The files and what was read from them are fixed; void the study and upload again instead.
+    editable: ['region', 'description', 'note'],
+    clinical: [...IMAGING_STUDY_COLUMNS],
+    hasTooth: false,
+    hasVersion: true,
+    supersedable: true,
+    derived: { sql: IMAGING_TEETH_SQL, columns: ['teeth'] },
+  },
+  imaging_read: {
+    table: 'imaging_read',
+    editable: [...IMAGING_READ_COLUMNS],
+    clinical: ['study_id', ...IMAGING_READ_COLUMNS],
+    hasTooth: false,
+    hasVersion: true,
+    supersedable: true,
+    json: ['measurements'],
+  },
 };
 
 export const ROUTE_KINDS: Record<string, EntryKind> = {
@@ -340,6 +399,8 @@ export const ROUTE_KINDS: Record<string, EntryKind> = {
   'surgical-details': 'surgery',
   'biopsy-specimens': 'specimen',
   'biopsy-results': 'specimen_result',
+  'imaging-studies': 'imaging_study',
+  'imaging-reads': 'imaging_read',
 };
 
 function norm(v: unknown): unknown {
