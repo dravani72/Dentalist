@@ -4,7 +4,7 @@
  * billing projection) are deliberately left out of the canonical form: they are not part of
  * what the dentist attests to.
  */
-export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media' | 'perio' | 'endo_dx' | 'endo_test' | 'endo_canal';
+export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media' | 'perio' | 'endo_dx' | 'endo_test' | 'endo_canal' | 'implant' | 'implant_event';
 
 export interface EntryKindDef {
   table: string;
@@ -51,6 +51,42 @@ export const ENDO_CANAL_DETAIL_COLUMNS = [
   'obturation_technique',
   'obturation_material',
   'sealer',
+  'note',
+] as const;
+
+export const IMPLANT_DETAIL_COLUMNS = [
+  'manufacturer',
+  'product_family',
+  'catalog_number',
+  'lot_number',
+  'serial_number',
+  'diameter_mm',
+  'length_mm',
+  'surface',
+  'platform',
+  'insertion_torque_ncm',
+  'isq',
+  'bone_quality',
+  'timing',
+  'healing',
+  'graft_material',
+  'graft_product',
+  'graft_lot',
+  'membrane_product',
+  'membrane_lot',
+  'note',
+] as const;
+
+export const IMPLANT_EVENT_DETAIL_COLUMNS = [
+  'isq',
+  'abutment_manufacturer',
+  'abutment_catalog_number',
+  'abutment_lot',
+  'abutment_torque_ncm',
+  'restoration_type',
+  'retention',
+  'complication',
+  'bone_loss_mm',
   'note',
 ] as const;
 
@@ -202,6 +238,23 @@ export const ENTRY_KINDS: Record<EntryKind, EntryKindDef> = {
     hasVersion: true,
     supersedable: true,
   },
+  implant: {
+    table: 'implant',
+    editable: [...IMPLANT_DETAIL_COLUMNS],
+    clinical: ['device_id', 'procedure_occurrence_id', ...IMPLANT_DETAIL_COLUMNS],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
+  implant_event: {
+    table: 'implant_event',
+    // The kind of step is fixed once recorded; void it and record the right one instead.
+    editable: [...IMPLANT_EVENT_DETAIL_COLUMNS],
+    clinical: ['device_id', 'event_type', ...IMPLANT_EVENT_DETAIL_COLUMNS],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
 };
 
 export const ROUTE_KINDS: Record<string, EntryKind> = {
@@ -216,6 +269,8 @@ export const ROUTE_KINDS: Record<string, EntryKind> = {
   'endo-diagnoses': 'endo_dx',
   'endo-tests': 'endo_test',
   'endo-canals': 'endo_canal',
+  implants: 'implant',
+  'implant-events': 'implant_event',
 };
 
 function norm(v: unknown): unknown {

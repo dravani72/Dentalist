@@ -106,6 +106,13 @@ As amy.jones, open **Jordan Rivera → Endo**. Tooth #19 shows the signed 2021 w
 tooth (say #3), add tests and a diagnosis, **Start root canal**, then add canals. **Mark root canal performed** is refused
 until every canal is obturated, calcified or not located.
 
+### Implant records
+
+As amy.jones, open **Hector Alvarez → Implants**. The #30 implant from 2024 shows its device details (catalog, lot,
+graft and membrane lots), its stability readings and its history through to a screw-retained crown and a 2025
+follow-up. Start today's visit to record a step on it, or start an implant placement at another site and record the
+device; a lot or serial number is required.
+
 ### Billing
 
 Codes and fees are an invented **SYNTHETIC** set (`SYN-…`, `apps/api/src/billing/synthetic-codes.ts`); the seed loads
@@ -143,7 +150,9 @@ no-show closure, webhook replay, telehealth prescribing) and perio charting (`te
 and version locks, furcation and range checks, front desk and other-practice refusals, database guards, signing,
 amendment by superseding the exam, integrity) and endo charting (`test/endo.test.ts`: test and result rules,
 dentist-only diagnosis, canals tied to a root canal in the same visit, the completion rule, front desk and
-other-practice refusals, database guards, signing, amendment, integrity).
+other-practice refusals, database guards, signing, amendment, integrity) and implant records
+(`test/implant.test.ts`: device tied to a placement procedure, implant sites, one device per site until removal,
+step rules, front desk and other-practice refusals, database guards, signing, amendment keeping the device identity).
 
 ## Layout
 

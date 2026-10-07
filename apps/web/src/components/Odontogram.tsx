@@ -147,7 +147,9 @@ function Silhouette({ tooth, marks, onClick }: { tooth: string; marks: ChartMark
   const lesion = strongest(marks, 'lesion');
   const missing = strongest(marks, 'missing');
   const extraction = strongest(marks, 'extraction');
-  const gone = missing ?? (extraction && extraction.layer !== 'planned' ? extraction : null);
+  // An implant placed where a tooth was extracted fills the site again: draw the implant, not the X.
+  const replaced = implant && implant.layer !== 'planned';
+  const gone = replaced ? null : (missing ?? (extraction && extraction.layer !== 'planned' ? extraction : null));
   const plannedX = !gone && extraction?.layer === 'planned';
   const tips: number[] = [];
   const roots: JSX.Element[] = [];

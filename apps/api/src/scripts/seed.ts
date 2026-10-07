@@ -16,6 +16,7 @@ import { ChartService } from '../charting/chart.service';
 import { SigningService } from '../charting/signing.service';
 import { PerioService } from '../charting/perio.service';
 import { EndoService } from '../charting/endo.service';
+import { ImplantService } from '../charting/implant.service';
 import { MediaService } from '../media/media.service';
 import { PrescribingService } from '../prescribing/prescribing.service';
 import { PortalStaffService } from '../portal/portal-staff.service';
@@ -51,6 +52,7 @@ async function main() {
   const signing = app.get(SigningService);
   const perio = app.get(PerioService);
   const endo = app.get(EndoService);
+  const implants = app.get(ImplantService);
   const media = app.get(MediaService);
   const rx = app.get(PrescribingService);
   const portalStaff = app.get(PortalStaffService);
@@ -83,8 +85,8 @@ async function main() {
   await rx.setPreference(frank, jordan.id, { partnerPharmacyId: pharmacies.find((p) => p.open24h)!.partnerPharmacyId, rank: '24_hour' });
 
   // ---------------------------------------------------------------- chart history (signed visits)
-  async function visit(by: Actor, date: string, complaint: string, xray: { label: string; modality: 'fmx' | 'bitewing' | 'periapical'; upper: (XrayTooth | null)[]; lower: (XrayTooth | null)[]; teeth: string[] }, record: (encounterId: string) => Promise<void>, sign = true) {
-    const { id } = await chart.openEncounter(by, { patientId: jordan.id, locationId: maple.locationId, chiefComplaint: complaint });
+  async function visit(by: Actor, date: string, complaint: string, xray: { label: string; modality: 'fmx' | 'bitewing' | 'periapical'; upper: (XrayTooth | null)[]; lower: (XrayTooth | null)[]; teeth: string[] }, record: (encounterId: string) => Promise<void>, sign = true, patientId = jordan.id) {
+    const { id } = await chart.openEncounter(by, { patientId, locationId: maple.locationId, chiefComplaint: complaint });
     await media.upload(by, id, {
       modality: xray.modality,
       contentType: 'image/svg+xml',
@@ -94,7 +96,7 @@ async function main() {
     });
     await record(id);
     // Backdate the visit while it is still a draft (synthetic history only).
-    for (const t of ['clinical_finding', 'existing_restoration', 'planned_procedure', 'procedure_occurrence', 'anesthetic_event', 'encounter_note', 'media_object', 'endo_diagnosis', 'endo_test', 'endo_canal']) {
+    for (const t of ['clinical_finding', 'existing_restoration', 'planned_procedure', 'procedure_occurrence', 'anesthetic_event', 'encounter_note', 'media_object', 'endo_diagnosis', 'endo_test', 'endo_canal', 'implant', 'implant_event']) {
       await owner.query(`UPDATE ${t} SET recorded_at = $2::date + time '14:30' WHERE encounter_id = $1`, [id, date]);
     }
     await owner.query(
@@ -208,6 +210,39 @@ async function main() {
     const exam = await perio.createExam(rosa, id, { examType: 'comprehensive' });
     await seedPerioChart(rosa, exam.id);
   });
+
+  // Implant history for Hector Alvarez: #30 extracted with an immediate implant in 2024,
+  // uncovered and restored with a screw-retained crown four months later, then a yearly check.
+  const hector = others[3]!;
+  let implant30 = '';
+  const pa30 = (m: Partial<XrayTooth>) => [{ universal: 31 }, { universal: 30, ...m }, { universal: 29 }];
+  await visit(amy, '2024-04-10', 'Cracked lower right molar', { label: 'PA #30', modality: 'periapical', upper: [], lower: pa30({ lesion: true }), teeth: ['30'] }, async (id) => {
+    await chart.addFinding(amy, id, { tooth: '30', category: 'pathology', findingType: 'fracture', surfaces: [], certainty: 'confirmed', note: 'Vertical root fracture, mesial root. Not restorable.' });
+    const ext = await chart.addProcedure(amy, id, {
+      tooth: '30', surfaces: [], procedureConcept: 'extraction', performedBy: [amy.staffId], assistedBy: [jane.staffId],
+      details: { technique: 'surgical, sectioned', hemostasis: true, postop_instructions: true }, anesthetics: [],
+    });
+    await chart.procedureStatus(amy, ext!.id, 'PERFORMED');
+    const place = await chart.addProcedure(amy, id, { tooth: '30', surfaces: [], procedureConcept: 'implant_placement', performedBy: [amy.staffId], assistedBy: [jane.staffId], details: {}, anesthetics: [] });
+    const r = await implants.place(amy, id, {
+      procedureId: place!.id, manufacturer: 'Synthetic Implant Co', productFamily: 'SynTapered', catalogNumber: 'ST-5010', lotNumber: 'SYN-LOT-2404',
+      diameterMm: 5, lengthMm: 10, surface: 'SLA', platform: 'Regular', insertionTorqueNcm: 40, isq: 66, boneQuality: 'D2', timing: 'immediate', healing: 'submerged',
+      graftMaterial: 'Xenograft', graftProduct: 'Synthetic bone mineral', graftLot: 'SBM-118', membraneProduct: 'Synthetic collagen membrane', membraneLot: 'SCM-42',
+      note: 'Placed into the distal socket after sectioning; gap grafted.',
+    });
+    implant30 = r.id;
+    await chart.procedureStatus(amy, place!.id, 'PERFORMED');
+  }, true, hector.id);
+  await visit(amy, '2024-08-14', 'Uncover and restore #30 implant', { label: 'PA #30', modality: 'periapical', upper: [], lower: pa30({ crown: true }), teeth: ['30'] }, async (id) => {
+    await implants.recordEvent(amy, id, { implantId: implant30, eventType: 'second_stage', isq: 77, abutmentTorqueNcm: null, restorationType: null, retention: null, complication: null, boneLossMm: null });
+    await implants.recordEvent(jane, id, {
+      implantId: implant30, eventType: 'restoration', isq: null, abutmentManufacturer: 'Synthetic Implant Co', abutmentCatalogNumber: 'TB-RP-1', abutmentLot: 'SYN-AB-0813',
+      abutmentTorqueNcm: 35, restorationType: 'single_crown', retention: 'screw', complication: null, boneLossMm: null, note: 'Screw access sealed with PTFE and composite.',
+    });
+  }, true, hector.id);
+  await visit(amy, '2025-08-20', 'Recall exam', { label: 'PA #30', modality: 'periapical', upper: [], lower: pa30({ crown: true }), teeth: ['30'] }, async (id) => {
+    await implants.recordEvent(rosa, id, { implantId: implant30, eventType: 'follow_up', isq: null, abutmentTorqueNcm: null, restorationType: null, retention: null, complication: null, boneLossMm: 0.3, note: 'No bleeding or suppuration on probing; stable crestal bone.' });
+  }, true, hector.id);
 
   // ---------------------------------------------------------------- billing history
   // Charges for the signed visits (invented SYNTHETIC codes and fees). The 2021 work was paid by

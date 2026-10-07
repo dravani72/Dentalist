@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Inject } from '@nestjs/common';
 import {
+  ImplantEventRequest,
+  ImplantPlacementRequest,
   EndoCanalRequest,
   EndoDiagnosisRequest,
   EndoTestRequest,
@@ -27,6 +29,7 @@ import { ChartService } from './chart.service';
 import { SigningService } from './signing.service';
 import { PerioService } from './perio.service';
 import { EndoService } from './endo.service';
+import { ImplantService } from './implant.service';
 import { ROUTE_KINDS } from './entry-kinds';
 
 const NoteRequest = z.object({ kind: z.enum(['clinical', 'hpi', 'postop_instructions', 'followup_plan']), body: z.string().trim().min(1).max(8000) });
@@ -39,6 +42,7 @@ export class ChartingController {
     @Inject(SigningService) private readonly signing: SigningService,
     @Inject(PerioService) private readonly perio: PerioService,
     @Inject(EndoService) private readonly endo: EndoService,
+    @Inject(ImplantService) private readonly implants: ImplantService,
   ) {}
 
   @Get('patients/:id/chart')
@@ -134,6 +138,16 @@ export class ChartingController {
   @Post('encounters/:id/endo-canals')
   endoCanal(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(EndoCanalRequest)) req: z.infer<typeof EndoCanalRequest>) {
     return this.endo.recordCanal(actor, id, req);
+  }
+
+  @Post('encounters/:id/implants')
+  implant(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(ImplantPlacementRequest)) req: z.infer<typeof ImplantPlacementRequest>) {
+    return this.implants.place(actor, id, req);
+  }
+
+  @Post('encounters/:id/implant-events')
+  implantEvent(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(ImplantEventRequest)) req: z.infer<typeof ImplantEventRequest>) {
+    return this.implants.recordEvent(actor, id, req);
   }
 
   @Post('planned-procedures/:id/status')
