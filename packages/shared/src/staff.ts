@@ -49,6 +49,13 @@ export const PRIVILEGE_GROUPS: { label: string; privileges: { key: Privilege; la
     ],
   },
   {
+    label: 'Lab cases',
+    privileges: [
+      { key: 'lab_case.manage', label: 'Draft and track lab cases, keep the lab list' },
+      { key: 'lab_case.authorize', label: 'Authorize and send lab prescriptions (needs a verified license)' },
+    ],
+  },
+  {
     label: 'Prescriptions',
     privileges: [
       { key: 'prescription.prepare', label: 'Prepare prescriptions' },

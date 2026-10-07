@@ -390,3 +390,49 @@ div.surgery-problems { list-style: none; padding-left: 0; }
 .pill.specimen-status.sp-follow_up { color: var(--danger); border-style: dotted; border-width: 2px; }
 .specimen-card.sp-overdue { border-style: dashed; }
 .biopsy-worklist { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+/* Lab cases. Each status pairs its words with its own mark and border style; flags carry a mark and words. */
+.pill.lab-status.ls-draft { color: var(--muted); border-style: dashed; }
+.pill.lab-status.ls-sent { color: var(--c-planned); border-style: dotted; border-width: 2px; }
+.pill.lab-status.ls-received { color: var(--fg); border-color: var(--c-completed); border-width: 2px; background: var(--lock-bg); }
+.pill.lab-status.ls-seated { color: var(--c-completed); }
+.pill.lab-status.ls-cancelled { color: var(--muted); text-decoration: line-through; }
+.lab-flags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.pill.lab-flag { color: var(--danger); border-style: double; border-width: 3px; }
+.pill.lab-flag.lf-due_after_appointment { color: var(--fg); border-color: var(--c-planned); border-style: dashed; border-width: 2px; background: var(--warn-bg); }
+.lab-case-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.lab-case-pick { width: 100%; text-align: left; display: grid; gap: 4px; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 6px; background: var(--sunken); }
+.lab-case-pick[aria-pressed="true"] { border-color: var(--accent); border-width: 2px; background: var(--surface); box-shadow: inset 4px 0 0 var(--accent); }
+.lab-table tr.has-flag td:first-child { box-shadow: inset 4px 0 0 var(--danger); }
+.rx-sheet { border: 1.5px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 10px; background: var(--enamel); color: #16231f; }
+.rx-sheet .muted, .rx-sheet .lbl { color: #5b6b66; }
+.rx-sheet-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.rx-sheet .lbl { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.rx-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+.rx-facts dt { font-weight: 700; }
+.rx-facts dd { margin: 0; }
+.rx-authorized { margin: 0; }
+.lab-history { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.lab-units { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 0; display: grid; gap: 10px; }
+.lab-units legend { padding: 0 4px; }
+.lab-unit-row { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: end; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
+.lab-unit-row .field.wide { flex: 1 1 180px; }
+.lab-rx-form fieldset.checks { border: 0; padding: 0; margin: 0; }
+.lab-rx-form .lbl, .lab-case-detail .lbl, .lab-return .lbl { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.chip.lab-view { font-family: inherit; }
+@media print {
+  body.print-rx * { visibility: hidden; }
+  body.print-rx .rx-sheet, body.print-rx .rx-sheet * { visibility: visible; }
+  body.print-rx .rx-sheet { position: absolute; inset: 0 auto auto 0; width: 100%; border: 0; background: #fff; }
+}
+.nowrap { white-space: nowrap; }
+.rx-images ol { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+.lab-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.lab-thumbs figure { margin: 0; width: 120px; display: grid; gap: 2px; }
+.lab-thumbs img, .lab-attach-pick img { width: 100%; height: 80px; object-fit: cover; border-radius: 4px; background: #000; }
+.lab-attach { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 0; }
+.lab-attach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.lab-attach-pick { display: grid; gap: 4px; padding: 6px; border: 1.5px dashed var(--line); border-radius: 6px; cursor: pointer; position: relative; }
+.lab-attach-pick input { position: absolute; top: 10px; left: 10px; width: 18px; height: 18px; }
+.lab-attach-pick.on { border: 3px solid var(--accent); padding: 4.5px; }
+@media print { .no-print { display: none !important; } }

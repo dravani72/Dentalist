@@ -50,6 +50,10 @@ export const PRIVILEGES = [
   'telehealth.coordinate',
   /** Run telehealth consultations (each visit still needs a passing jurisdiction evaluation). */
   'telehealth.consult',
+  /** Draft lab cases, keep the lab list, and track cases out and back (sent, received, seated). */
+  'lab_case.manage',
+  /** Authorize and send a lab prescription, or send a case back to the lab (licensed dentists). */
+  'lab_case.authorize',
 ] as const;
 
 export type Privilege = (typeof PRIVILEGES)[number];
@@ -68,6 +72,7 @@ export const CREDENTIALED_PRIVILEGES: readonly Privilege[] = [
   'encounter.amend',
   'prescription.sign_noncontrolled',
   'prescription.sign_controlled',
+  'lab_case.authorize',
 ];
 
 /**
@@ -79,6 +84,8 @@ export const STEP_UP_PRIVILEGES: readonly Privilege[] = [
   'prescription.sign_noncontrolled',
   'prescription.sign_controlled',
   'security.break_glass',
+  /** Sending a lab prescription (or sending a case back) is a dentist's order. */
+  'lab_case.authorize',
   /** Privilege grants, credential verification and sign-in resets. */
   'admin.staff',
 ];
@@ -107,6 +114,7 @@ export const ROLE_TEMPLATES: Record<RoleTemplate, readonly Privilege[]> = {
     'payment.post',
     'insurance.manage',
     'telehealth.coordinate',
+    'lab_case.manage',
   ],
   dental_assistant: [
     'patient.read',
@@ -118,6 +126,7 @@ export const ROLE_TEMPLATES: Record<RoleTemplate, readonly Privilege[]> = {
     'procedure.complete',
     'media.upload',
     'prescription.prepare',
+    'lab_case.manage',
     'portal.respond',
   ],
   hygienist: [
@@ -155,6 +164,8 @@ export const ROLE_TEMPLATES: Record<RoleTemplate, readonly Privilege[]> = {
     'billing.read',
     'telehealth.coordinate',
     'telehealth.consult',
+    'lab_case.manage',
+    'lab_case.authorize',
   ],
   billing: [
     'patient.read',
@@ -181,6 +192,7 @@ export const ROLE_TEMPLATES: Record<RoleTemplate, readonly Privilege[]> = {
     'billing.read',
     'ledger.adjust',
     'fee_schedule.manage',
+    'lab_case.manage',
   ],
   compliance_officer: ['audit.read', 'security.break_glass', 'record.export'],
 };
