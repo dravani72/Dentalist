@@ -4,7 +4,7 @@
  * billing projection) are deliberately left out of the canonical form: they are not part of
  * what the dentist attests to.
  */
-export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media' | 'perio';
+export type EntryKind = 'finding' | 'existing' | 'diagnosis' | 'plan' | 'procedure' | 'note' | 'anesthetic' | 'material' | 'media' | 'perio' | 'endo_dx' | 'endo_test' | 'endo_canal';
 
 export interface EntryKindDef {
   table: string;
@@ -38,6 +38,20 @@ export const PROCEDURE_DETAIL_COLUMNS = [
   'complications',
   'lab_case_reference',
   'postop_instructions',
+] as const;
+
+export const ENDO_CANAL_DETAIL_COLUMNS = [
+  'status',
+  'reference_point',
+  'working_length_mm',
+  'apex_locator_reading',
+  'master_apical_size',
+  'taper',
+  'instrumentation_system',
+  'obturation_technique',
+  'obturation_material',
+  'sealer',
+  'note',
 ] as const;
 
 /**
@@ -163,6 +177,31 @@ export const ENTRY_KINDS: Record<EntryKind, EntryKindDef> = {
     supersedable: true,
     derived: { sql: PERIO_DERIVED_SQL, columns: ['teeth', 'sites'] },
   },
+  endo_dx: {
+    table: 'endo_diagnosis',
+    editable: ['pulpal_diagnosis', 'apical_diagnosis', 'symptoms', 'note'],
+    clinical: ['pulpal_diagnosis', 'apical_diagnosis', 'symptoms', 'note'],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
+  endo_test: {
+    table: 'endo_test',
+    // The kind of test is fixed once recorded; void it and record the right one instead.
+    editable: ['result', 'ept_reading', 'lingering_seconds', 'is_control', 'note'],
+    clinical: ['test', 'result', 'ept_reading', 'lingering_seconds', 'is_control', 'note'],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
+  endo_canal: {
+    table: 'endo_canal',
+    editable: [...ENDO_CANAL_DETAIL_COLUMNS],
+    clinical: ['procedure_occurrence_id', 'canal', ...ENDO_CANAL_DETAIL_COLUMNS],
+    hasTooth: true,
+    hasVersion: true,
+    supersedable: true,
+  },
 };
 
 export const ROUTE_KINDS: Record<string, EntryKind> = {
@@ -174,6 +213,9 @@ export const ROUTE_KINDS: Record<string, EntryKind> = {
   notes: 'note',
   anesthetics: 'anesthetic',
   'perio-exams': 'perio',
+  'endo-diagnoses': 'endo_dx',
+  'endo-tests': 'endo_test',
+  'endo-canals': 'endo_canal',
 };
 
 function norm(v: unknown): unknown {

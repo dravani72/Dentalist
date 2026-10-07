@@ -93,6 +93,8 @@ export function errorText(e: unknown): string {
     const missing = (e.details as { missing?: string[] } | undefined)?.missing;
     if (issues?.length) return `${e.message}: ${issues.map((i) => (i.path ? `${i.path} ${i.message}` : i.message)).join('; ')}`;
     if (missing?.length) return `${e.message} (${missing.join(', ')})`;
+    const canals = (e.details as { canals?: string[] } | undefined)?.canals;
+    if (canals?.length) return `${e.message}: ${canals.join('; ')}`;
     return e.message;
   }
   return e instanceof Error ? e.message : String(e);

@@ -1,5 +1,8 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Inject } from '@nestjs/common';
 import {
+  EndoCanalRequest,
+  EndoDiagnosisRequest,
+  EndoTestRequest,
   CreateEncounterRequest,
   CreatePerioExamRequest,
   PerioToothRequest,
@@ -23,6 +26,7 @@ import type { Actor } from '../auth/actor';
 import { ChartService } from './chart.service';
 import { SigningService } from './signing.service';
 import { PerioService } from './perio.service';
+import { EndoService } from './endo.service';
 import { ROUTE_KINDS } from './entry-kinds';
 
 const NoteRequest = z.object({ kind: z.enum(['clinical', 'hpi', 'postop_instructions', 'followup_plan']), body: z.string().trim().min(1).max(8000) });
@@ -34,6 +38,7 @@ export class ChartingController {
     @Inject(ChartService) private readonly chart: ChartService,
     @Inject(SigningService) private readonly signing: SigningService,
     @Inject(PerioService) private readonly perio: PerioService,
+    @Inject(EndoService) private readonly endo: EndoService,
   ) {}
 
   @Get('patients/:id/chart')
@@ -114,6 +119,21 @@ export class ChartingController {
   @Post('perio-exams/:id/teeth')
   perioTooth(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(PerioToothRequest)) req: PerioToothRequest) {
     return this.perio.recordTooth(actor, id, req);
+  }
+
+  @Post('encounters/:id/endo-diagnoses')
+  endoDiagnosis(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(EndoDiagnosisRequest)) req: z.infer<typeof EndoDiagnosisRequest>) {
+    return this.endo.recordDiagnosis(actor, id, req);
+  }
+
+  @Post('encounters/:id/endo-tests')
+  endoTest(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(EndoTestRequest)) req: z.infer<typeof EndoTestRequest>) {
+    return this.endo.recordTest(actor, id, req);
+  }
+
+  @Post('encounters/:id/endo-canals')
+  endoCanal(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body(body(EndoCanalRequest)) req: z.infer<typeof EndoCanalRequest>) {
+    return this.endo.recordCanal(actor, id, req);
   }
 
   @Post('planned-procedures/:id/status')

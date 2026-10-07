@@ -17,6 +17,7 @@ import { SchedulingController } from './scheduling/scheduling.controller';
 import { ChartService } from './charting/chart.service';
 import { SigningService } from './charting/signing.service';
 import { PerioService } from './charting/perio.service';
+import { EndoService } from './charting/endo.service';
 import { ChartingController } from './charting/charting.controller';
 import { LocalEncryptedStorage, MEDIA_STORAGE, MediaService } from './media/media.service';
 import { MediaController } from './media/media.controller';
@@ -93,6 +94,7 @@ export class AppModule {
       ChartService,
       SigningService,
       PerioService,
+      EndoService,
       MediaService,
       PrescribingService,
       BillingService,

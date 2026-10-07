@@ -16,6 +16,7 @@ import {
   TransitionError,
   findTransition,
   invalidSurfacesFor,
+  canalCompletion,
   missingForCompletion,
   normalizeSurfaces,
   positionByUniversal,
@@ -31,6 +32,7 @@ import { ENTRY_KINDS, EntryKind, PROCEDURE_DETAIL_COLUMNS } from './entry-kinds'
 import { suggestBillingCode } from '../billing/codes';
 import { caseForEncounter } from '../telehealth/hooks';
 import { copyPerioMeasurements } from './perio-rows';
+import { checkEndoEdit, liveCanals } from './endo-rows';
 
 export interface EncounterRow {
   id: string;
@@ -134,7 +136,7 @@ export class ChartService {
   }
 
   async encounterEntries(tx: Tx, encounterId: string) {
-    const kinds: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'note', 'anesthetic', 'material', 'media', 'perio'];
+    const kinds: EntryKind[] = ['finding', 'existing', 'diagnosis', 'plan', 'procedure', 'note', 'anesthetic', 'material', 'media', 'perio', 'endo_dx', 'endo_test', 'endo_canal'];
     const out: Record<string, unknown[]> = {};
     for (const k of kinds) {
       out[k] = await tx.query(entrySelect(k, effectiveWhere(k)) + ' ORDER BY e.recorded_at', [encounterId]);
@@ -546,7 +548,18 @@ export class ChartService {
       await this.access.require(actor, t.privilege, { action: 'procedure.status', patientId: p.patient_id, objectId: id });
       const { e } = await this.writableEncounter(tx, actor, p.encounter_id, 'procedure.status');
       if (to === 'PERFORMED') {
-        const missing = missingForCompletion(procedureConcept(p.procedure_concept)!, p.surfaces, { ...p.concept_details, ...p });
+        const details: Record<string, unknown> = { ...p.concept_details, ...p };
+        if (p.procedure_concept === 'root_canal_therapy') {
+          // Canal records, when there are any, stand in for the free-text canal and obturation fields.
+          const canals = await liveCanals(tx, id);
+          if (canals.length) {
+            const c = canalCompletion(canals);
+            if (c.problems.length) throw invalid('Finish every canal first', { canals: c.problems });
+            details.canals ||= c.canals;
+            details.obturation ||= c.obturation || null;
+          }
+        }
+        const missing = missingForCompletion(procedureConcept(p.procedure_concept)!, p.surfaces, details);
         if (missing.length) throw invalid('Complete the required fields first', { missing });
       }
       let verified: { by: string | null; at: string | null } = { by: null, at: null };
@@ -596,6 +609,7 @@ export class ChartService {
       }
     }
     if (kind === 'procedure' && 'concept_details' in changes) throw invalid('Use details to change procedure annotation');
+    if (kind === 'endo_dx' || kind === 'endo_test' || kind === 'endo_canal') return checkEndoEdit(tx, kind, row, out);
     return out;
   }
 }
@@ -603,12 +617,14 @@ export class ChartService {
 function privilegeFor(kind: EntryKind) {
   switch (kind) {
     case 'diagnosis':
+    case 'endo_dx':
       return 'diagnosis.create' as const;
     case 'plan':
       return 'treatment_plan.create' as const;
     case 'procedure':
     case 'anesthetic':
     case 'material':
+    case 'endo_canal':
       return 'procedure.complete' as const;
     case 'media':
       return 'media.upload' as const;
