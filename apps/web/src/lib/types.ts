@@ -1,3 +1,4 @@
+import type { PerioSiteRow, PerioToothRow } from '@teeth/shared';
 export interface Me {
   staffId: string;
   displayName: string;
@@ -72,6 +73,14 @@ export interface EntrySet {
   anesthetic: Entry[];
   material: Entry[];
   media: Entry[];
+  perio: PerioExamEntry[];
+}
+
+/** A perio exam with its measurements (read with the exam, attested with it). */
+export interface PerioExamEntry extends Entry {
+  exam_type: string;
+  teeth: PerioToothRow[];
+  sites: PerioSiteRow[];
 }
 
 export interface Encounter {

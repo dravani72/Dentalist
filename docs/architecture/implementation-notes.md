@@ -25,6 +25,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Practice setup: staff, privileges, licenses, provider hours, first sign-in | 0008; `apps/api/src/admin/*`, `src/scheduling/availability.ts`; `packages/shared/src/staff.ts`; `apps/web/src/pages/admin/*`, `AccountSetup.tsx`; details in `practice-setup.md` |
 | Patients tab filters and recall | `apps/api/src/patients/patients.service.ts` `search()`, `src/scheduling/recall.ts`; `PatientListQuery` in `packages/shared/src/schemas.ts`; `apps/web/src/pages/Patients.tsx`. See "Patient filters and recall" below |
 | Telehealth triage: cases, intake, jurisdiction eligibility, sessions, remote findings, signing evidence | 0009; `apps/api/src/telehealth/*` (`RtcAdapter`, `FakeRtcAdapter`); `packages/shared/src/telehealth.ts`; `config/jurisdiction_registry.json`; `apps/web/src/pages/telehealth/*`, portal `telehealth.tsx`; details in `telehealth.md` |
+| Periodontal charting (Phase 6): six-site probing, recession, CAL, BOP, suppuration, plaque, calculus, furcation, mobility, keratinized gingiva | 0010; `apps/api/src/charting/perio.service.ts`, `perio-rows.ts`, `entry-kinds.ts` (`perio`); `packages/shared/src/perio.ts`; `apps/web/src/pages/PerioTab.tsx`. See "Periodontal charting" below |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
 ## Deliberate deviations
@@ -79,6 +80,40 @@ combine with each other and with the search box, and work without a search term 
 - The search is audited as `patient.search` with the filters used; the search text is never written to the audit.
 - There is no inactive/deceased patient status yet, so every patient with an open recall counts as current.
 
+## Periodontal charting
+
+The **Perio** tab on a patient record charts a full-mouth exam and compares it with an earlier one.
+
+- **A perio exam is a chart entry of its visit**, like a finding: one live exam per visit, recorded by anyone with
+  `clinical_finding.record` (hygienists, assistants, dentists). Measurements are typed rows, not JSON:
+  `perio_tooth` (mobility 0-3, keratinized gingiva in mm, mucogingival defect, note) and `perio_site`
+  (MB B DB DL L ML: probing depth, recession, bleeding, suppuration, plaque, calculus, furcation grade I-IV).
+- **CAL is computed by Postgres** (`probing_depth + recession`, a generated column), so it can never disagree with the
+  two values it comes from. Recession is CEJ to gingival margin, negative when the margin is above the CEJ.
+- **Furcations only where a tooth has one**: maxillary molars B, ML, DL; maxillary first premolars ML, DL;
+  mandibular molars B, L. Primary teeth are refused (the perio chart covers the permanent dentition).
+- **Saved a tooth at a time** (`POST /perio-exams/:id/teeth`) with the tooth's version as an optimistic lock; a save
+  that changes nothing does not bump the version. Every save is audited as `perio.record` with the tooth's position code.
+- **Signing locks the exam with its visit.** The exam and its measurements (aggregated in a fixed order, without
+  timestamps) are part of the attested payload, so integrity checks catch any change to a single site. A database
+  trigger refuses writes to measurements of a signed or voided exam, and measurements on another patient's tooth.
+- **Amendments supersede the whole exam**: the first save during an amendment copies the signed exam and its
+  measurements to a new exam (keeping who recorded each value) and applies the change there. The amendment diff
+  lists `perio` with `teeth` or `sites` as the changed fields.
+- **In person only.** A telehealth visit cannot start a perio exam (TH-005).
+- **Entry**: click or tap a cell, then type. A digit enters the value and moves along the usual probing path
+  (maxillary buccal 1→16, palatal 16→1, mandibular lingual 17→32, buccal 32→17), skipping teeth the chart shows as
+  missing or extracted. Shift + digit adds 10, "−" makes a recession negative, B S P C toggle site findings. The
+  keypad under the chart does the same for touch and stylus. **Voice entry is not built**: browser speech recognition
+  sends audio to a third-party service, which would be a new PHI vendor needing a BAA review.
+- **Colorblind-safe**: 4-5 mm depths are bold and underlined, 6 mm and deeper are bold in a dark box, site findings are
+  letters (B S P C) with distinct shapes, the gingival margin line is solid with round points and the pocket base
+  dashed with square points, and changes since the compared exam carry ▲ / ▼ arrows.
+- **Comparison** shows the whole-mouth numbers side by side and lists every site whose depth or attachment level
+  moved by 2 mm or more. These numbers are descriptive; staging, grading and diagnosis stay with the dentist.
+- The seed gives Jordan a signed comprehensive exam on the 2023 recall visit; today's visit has none, so a new exam
+  can be started there and compared with 2023.
+
 ## Not built yet
 
 - Portal pieces still missing: online payment (needs a payment processor choice), referral and document downloads,
@@ -89,7 +124,9 @@ combine with each other and with the search box, and work without a search term 
   primary payment), claim status inquiry (276/277), statements by mail, payment plans, collections.
 - Telehealth gaps: LiveKit audio egress into the encrypted media store, transcription, the replay buffer, referral
   records, telehealth billing codes, real state rules (each needs legal review), an approved triage protocol.
-- Perio charting, endo detail, oral surgery, lab cases, DICOM/CBCT viewing (Phase 6).
+- Phase 6 still to come: endo detail, implants as device records, oral surgery, lab cases, DICOM/CBCT viewing.
+  Perio gaps: probing around implants (needs implant tooth instances), voice entry (needs a speech vendor with a
+  BAA), a perio maintenance recall interval, and printing the chart for the patient or a referral.
 - EPCS (Phase 7) and AI assistance (Phase 8).
 - Production adapters: Cognito, KMS, S3, SQS, DoseSpot. Terraform is a skeleton and has never been applied.
 - Backup/restore drills and monitoring (MVP item 12 covers tenant isolation, access control and PHI-safe logging
