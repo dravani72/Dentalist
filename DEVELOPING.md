@@ -121,6 +121,14 @@ sectioning, a suspected sinus opening closed with a collagen plug) and **Samuel 
 biopsy that came back as mild dysplasia, with its follow-up plan. Start today's visit to start an extraction or a
 soft-tissue biopsy and record its surgical detail or specimen; a dentist records pathology results.
 
+### Lab cases
+
+As frank.ito or amy.jones, the **Lab cases** page lists open cases: Samuel Okafor's bridge is overdue from the lab,
+Hector Alvarez's crown #14 is back for today's crown appointment, and Priya Natarajan's night guard is a draft. Open
+**Priya Natarajan → Lab cases** as amy.jones to authorize and send it (asks for an authenticator code); as frank.ito
+the same case shows it waiting for Dr. Jones. **Jordan Rivera → Lab cases** has the 2021 crown #19 from prescription
+to seat. The labs themselves are kept at the bottom of the Lab cases page.
+
 ### Billing
 
 Codes and fees are an invented **SYNTHETIC** set (`SYN-…`, `apps/api/src/billing/synthetic-codes.ts`); the seed loads
@@ -163,7 +171,10 @@ other-practice refusals, database guards, signing, amendment, integrity) and imp
 step rules, front desk and other-practice refusals, database guards, signing, amendment keeping the device identity)
 and oral surgery (`test/surgery.test.ts`: surgical record tied to an extraction, approach and sinus rules, the
 completion rules, biopsy specimens and the waiting list, dentist-only results, front desk and other-practice refusals,
-telehealth refusal, database guards, signing, amendment keeping the specimen identity).
+telehealth refusal, database guards, signing, amendment keeping the specimen identity) and lab cases
+(`test/lab.test.ts`: the lab list, Rx rules, prescriber by privilege, the version check, sending by the prescribing
+dentist only with step-up and a license, the frozen Rx and its digest, the round trip, flags and the overdue list,
+appointment linking, other-practice refusals and row-level security).
 
 ## Layout
 

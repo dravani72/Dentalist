@@ -29,6 +29,7 @@ How the Architecture Plan maps onto this code, where the build deliberately diff
 | Endodontic charting (Phase 6): AAE-style pulpal and apical diagnosis, pulp and periapical tests with control teeth, canals of a root canal (working length, preparation, obturation) | 0011; `apps/api/src/charting/endo.service.ts`, `endo-rows.ts`, `entry-kinds.ts` (`endo_dx`, `endo_test`, `endo_canal`); `packages/shared/src/endo.ts`; `apps/web/src/pages/EndoTab.tsx`. See "Endodontic charting" below |
 | Oral surgery (Phase 6): structured extraction record (approach, impaction, flap, bone removal, sectioning, socket graft, sinus, hemostasis, sutures, complications, post-op), biopsy specimens, pathology results and the waiting list | 0013; `apps/api/src/charting/surgery.service.ts`, `surgery-rows.ts`, `entry-kinds.ts` (`surgery`, `specimen`, `specimen_result`); `packages/shared/src/surgery.ts`; `apps/web/src/pages/SurgeryTab.tsx`, `Patients.tsx` (worklist). See "Oral surgery" below |
 | Implant records (Phase 6): implant as a persistent device (manufacturer, catalog, lot/serial, size, torque, ISQ, grafts) and its later steps (uncovery, abutment, restoration, checks, complications, removal) | 0012; `apps/api/src/charting/implant.service.ts`, `implant-rows.ts`, `entry-kinds.ts` (`implant`, `implant_event`); `packages/shared/src/implant.ts`; `apps/web/src/pages/ImplantsTab.tsx`. See "Implant records" below |
+| Lab cases (Phase 6): dental labs, lab prescriptions (units by tooth or arch, material, shade, impression, enclosures), dentist authorization, the round trip back and forth, seating, and the practice-wide tracking list | 0014; `apps/api/src/lab/*`; `packages/shared/src/lab.ts`; `apps/web/src/pages/LabCases.tsx`, `LabCasesTab.tsx`. See "Lab cases" below |
 | Odontogram and visit layers | `apps/web/src/components/Odontogram.tsx`, `lib/chart-model.ts`, `pages/ChartTab.tsx` |
 
 ## Deliberate deviations
@@ -213,6 +214,44 @@ The **Surgery** tab on a patient record has a card per extraction and per biopsy
 - The seed adds Hector's #30 surgical record, Mei Tanaka's impacted #1 (2025), Samuel Okafor's leukoplakia biopsy
   with a dysplasia result, and two biopsies still waiting (one overdue).
 
+## Lab cases
+
+A **lab case** is a work order to a dental laboratory: a crown, bridge, veneer, implant crown, denture, night guard
+and so on. It is not a chart entry; it is an order with a status, tracked until the work is seated. The charted
+procedure (the crown prep, the seat) is still recorded and signed in its visit as usual.
+
+- **Labs** (`dental_lab`) are kept on the **Lab cases** page: name, phone, email, address, active.
+- **The prescription (Rx)** (`lab_case`, `lab_case_item`): lab, prescribing dentist, impression (digital scan with a
+  scan ID, or conventional), what is enclosed, instructions, requested due date, and 1 to 16 units. A unit is on a
+  tooth (crown, bridge retainer, pontic, inlay/onlay, veneer, implant crown) or an arch (complete or partial denture,
+  night guard), with material and shade. Units point at the patient's tooth instance; the tooth number is stored for
+  display only. An implant crown needs an implant on file at that site. Each tooth once per case; a digital scan has
+  no physical impression.
+- **States**: Draft → At the lab (SENT) → Back from lab (RECEIVED) → Seated, with Cancelled from any open state. From
+  Back from lab a dentist can send the case back for an adjustment, a remake or the next stage (try-in), which starts
+  a new round with its own due date and instructions.
+- **Who does what** (privileges, never job titles): `lab_case.manage` (front desk, assistants, practice manager,
+  dentists) keeps labs, drafts and edits cases, records them coming back, seating and cancelling, and links the seat
+  appointment. `lab_case.authorize` (dentists) sends: only the case's prescribing dentist, with a fresh step-up code
+  and an active license in the location's state (`lab_case.authorize` is a credentialed and step-up privilege). The
+  prescribing dentist chosen on a draft must hold `lab_case.authorize`.
+- **Frozen once sent.** Sending stores the prescription as the lab receives it (`lab_case_event.rx_snapshot`, patient
+  by id only) with its SHA-256, and the database refuses any later change to the Rx, its units, or who authorized it
+  and when. A send-back keeps its own snapshot (Rx plus the new instructions). History (`lab_case_event`) is
+  append-only and cases are never deleted. Every read and change is audited.
+- **Tracking.** `GET /lab-cases?view=open|overdue|received|all` lists cases at the caller's locations with flags:
+  overdue (at the lab past its due date), due on or after the seat appointment, and still at the lab on or after
+  the seat appointment's day. The patient's **Lab cases** tab shows the same flags as callouts.
+- **Printed Rx.** "Print prescription" prints only the Rx sheet. On paper the patient is first name, last initial and
+  chart number: enough for the lab to match the case.
+- **Colorblind-safe**: each status pairs its words with its own mark and border (✎ Draft, dashed; ➜ At the lab,
+  dotted; ⬇ Back from lab, heavy with a fill; ✓ Seated; ✕ Cancelled, struck through), and flags carry ⚠ or ◷ with
+  their words and a double or dashed border. Rows that need a look also get a bar at the left edge.
+- The seed adds two labs; Jordan's 2021 crown #19 (seated, linked to the charted crown); Hector's crown #14, back
+  from the lab for today's crown appointment; Samuel's three-unit bridge #28-30, overdue from the lab; and a draft
+  upper night guard for Priya waiting for Dr. Jones to authorize. The older cases are moved back in time by the seed
+  (which disables the history guard for that one step); everything else goes through the lab service.
+
 ## Not built yet
 
 - Portal pieces still missing: online payment (needs a payment processor choice), referral and document downloads,
@@ -223,7 +262,11 @@ The **Surgery** tab on a patient record has a card per extraction and per biopsy
   primary payment), claim status inquiry (276/277), statements by mail, payment plans, collections.
 - Telehealth gaps: LiveKit audio egress into the encrypted media store, transcription, the replay buffer, referral
   records, telehealth billing codes, real state rules (each needs legal review), an approved triage protocol.
-- Phase 6 still to come: lab cases, DICOM/CBCT viewing.
+- Phase 6 still to come: DICOM/CBCT viewing.
+  Lab case gaps: electronic case submission and status updates from a lab portal (each lab is a new vendor that
+  needs a BAA and an adapter), sending scan files with the case, lab invoices and remake cost tracking, linking units
+  to plan items in the form (the API accepts `plannedProcedureId`), and per-unit status for multi-unit cases. Flags
+  compare the seat appointment's UTC date, so a late-evening appointment can be a day off.
   Oral surgery gaps: sedation and general anesthesia records (monitoring, vitals, recovery), consent linked to the
   procedure, an electronic pathology requisition and results feed from a lab (needs a lab partner and BAA), a
   suture-removal reminder for non-resorbable sutures, other surgical procedures (alveoloplasty, frenectomy, incision

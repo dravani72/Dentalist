@@ -18,6 +18,7 @@ import { PerioService } from '../charting/perio.service';
 import { EndoService } from '../charting/endo.service';
 import { ImplantService } from '../charting/implant.service';
 import { SurgeryService } from '../charting/surgery.service';
+import { LabService } from '../lab/lab.service';
 import { MediaService } from '../media/media.service';
 import { PrescribingService } from '../prescribing/prescribing.service';
 import { PortalStaffService } from '../portal/portal-staff.service';
@@ -166,11 +167,13 @@ async function main() {
   });
 
   // Visit 3: crown delivery #19 (fulfils the plan item)
+  let crown19Seated = '';
   await visit(amy, '2021-03-17', 'Crown delivery #19', { label: 'PA #19', modality: 'periapical', upper: [], lower: [{ universal: 20 }, { universal: 19, crown: true, rootCanal: true }, { universal: 18 }], teeth: ['19'] }, async (id) => {
     const p = await chart.addProcedure(jane, id, {
       tooth: '19', surfaces: [], procedureConcept: 'crown_ceramic', plannedProcedureId: crown19, performedBy: [amy.staffId], assistedBy: [jane.staffId],
-      details: { shade: 'A2', cement: 'RMGI', contact_verified: true, occlusion_verified: true, lab_case_reference: 'LAB-SYN-2207' }, anesthetics: [],
+      details: { shade: 'A2', cement: 'RMGI', contact_verified: true, occlusion_verified: true, lab_case_reference: 'LC-00001' }, anesthetics: [],
     });
+    crown19Seated = p!.id;
     await chart.procedureStatus(jane, p!.id, 'PERFORMED');
   });
 
@@ -342,7 +345,7 @@ async function main() {
   await book(others[0]!.id, 'hygiene', '08:00', '09:00', 2, 'rosa');
   await book(others[1]!.id, 'exam', '09:00', '10:00', 0, 'amy');
   await book(others[2]!.id, 'hygiene', '09:30', '10:30', 2, 'rosa');
-  await book(others[3]!.id, 'crown', '10:00', '12:00', 1, 'lee');
+  const hectorCrownAppt = await book(others[3]!.id, 'crown', '10:00', '12:00', 1, 'lee');
   const jordanAppt = await book(jordan.id, 'restorative', '14:00', '15:30', 0, 'amy');
   await book(others[4]!.id, 'emergency', '15:30', '16:00', 1, 'amy');
 
@@ -371,6 +374,60 @@ async function main() {
   await scheduling.addRecall(frank, { patientId: others[0]!.id, recallType: 'hygiene', intervalMonths: 6, lastVisitDate: daysAgo(215) });
   await scheduling.addRecall(frank, { patientId: others[1]!.id, recallType: 'hygiene', intervalMonths: 6, lastVisitDate: daysAgo(170) });
   await scheduling.addRecall(frank, { patientId: others[2]!.id, recallType: 'hygiene', intervalMonths: 6, lastVisitDate: daysAgo(60) });
+
+  // ---------------------------------------------------------------- lab cases
+  // Two labs; Jordan's 2021 crown #19 (seated); Hector's crown #14, back from the lab for today's
+  // crown appointment; Samuel's bridge, late from the lab; and a draft night guard for Priya that
+  // Dr. Jones hasn't authorized yet. Cases go through the lab service like any other; the older
+  // ones are then moved back in time, which only seed data may do.
+  const labs = app.get(LabService);
+  const crownLab = await labs.saveLab(jane, null, { name: 'Synthetic Crown & Bridge Lab', phone: '555-0140', email: 'cases@crownbridge.example.test', address: '12 Kiln Road, Springfield', active: true });
+  const applianceLab = await labs.saveLab(jane, null, { name: 'Synthetic Appliance Studio', phone: '555-0155', email: 'orders@appliance.example.test', active: true });
+  const inDaysDate = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const labCase = (patientId: string, prescriber: Actor, labId: string, impression: 'digital_scan' | 'conventional', items: { restoration: 'crown' | 'pontic' | 'bridge_retainer' | 'night_guard'; tooth?: string; arch?: 'upper' | 'lower'; material: 'zirconia' | 'lithium_disilicate' | 'pfm' | 'acrylic'; shade?: string }[], instructions: string) =>
+    labs.create(frank, {
+      patientId, locationId: maple.locationId, labId, prescribingDentistId: prescriber.staffId, impressionType: impression,
+      scanReference: impression === 'digital_scan' ? `SCAN-${Math.floor(Math.random() * 9000 + 1000)}` : undefined,
+      enclosures: impression === 'digital_scan' ? ['photos'] : ['impression', 'opposing_model', 'bite_registration'], instructions, dueDate: inDaysDate(10),
+      items: items.map((i) => ({ ...i, shade: i.shade, material: i.material })),
+    });
+  const version = async (id: string) => (await owner.query<{ version: number }>('SELECT version FROM lab_case WHERE id = $1', [id])).rows[0]!.version;
+  /** Seed only: moves a case's dates and the matching history entries back in time. */
+  async function backdate(id: string, dates: { sent_on?: string; due_date?: string; received_on?: string; seated_on?: string }, events: Record<string, string>) {
+    const cols = Object.keys(dates);
+    await owner.query(`UPDATE lab_case SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE id = $1`, [id, ...cols.map((c) => dates[c as keyof typeof dates])]);
+    if (dates.sent_on) {
+      await owner.query('ALTER TABLE lab_case DISABLE TRIGGER lab_case_rx_guard');
+      await owner.query(`UPDATE lab_case SET authorized_at = ($2::date + time '10:15') AT TIME ZONE 'America/Chicago' WHERE id = $1`, [id, dates.sent_on]);
+      await owner.query('ALTER TABLE lab_case ENABLE TRIGGER lab_case_rx_guard');
+    }
+    await owner.query('ALTER TABLE lab_case_event DISABLE TRIGGER lab_case_event_append_only');
+    for (const [status, day] of Object.entries(events)) {
+      await owner.query(`UPDATE lab_case_event SET at = ($3::date + time '10:15') AT TIME ZONE 'America/Chicago', due_date = CASE WHEN due_date IS NULL THEN NULL ELSE $4::date END WHERE lab_case_id = $1 AND to_status = $2`, [id, status, day, dates.due_date ?? null]);
+    }
+    await owner.query('ALTER TABLE lab_case_event ENABLE TRIGGER lab_case_event_append_only');
+  }
+  const jordanCrown = await labCase(jordan.id, amy, crownLab.id!, 'conventional', [{ restoration: 'crown', tooth: '19', material: 'lithium_disilicate', shade: 'A2' }], 'Endodontically treated tooth; build-up in place. Light occlusion.');
+  await labs.send(amy, jordanCrown.id, 1);
+  await labs.receive(frank, jordanCrown.id, await version(jordanCrown.id), '2021-03-12');
+  await labs.seat(jane, jordanCrown.id, await version(jordanCrown.id), '2021-03-17', crown19Seated, 'Seated with RMGI cement.');
+  await backdate(jordanCrown.id, { sent_on: '2021-02-26', due_date: '2021-03-12', received_on: '2021-03-12', seated_on: '2021-03-17' }, { DRAFT: '2021-02-26', SENT: '2021-02-26', RECEIVED: '2021-03-12', SEATED: '2021-03-17' });
+
+  const hectorCrown = await labCase(others[3]!.id, lee, crownLab.id!, 'digital_scan', [{ restoration: 'crown', tooth: '14', material: 'zirconia', shade: 'A3' }], 'Full-contour zirconia; buccal cusp clearance is tight, please flag if under 1 mm.');
+  await labs.setAppointment(frank, hectorCrown.id, hectorCrownAppt.id);
+  await labs.send(lee, hectorCrown.id, await version(hectorCrown.id));
+  await labs.receive(frank, hectorCrown.id, await version(hectorCrown.id), daysAgo(1), 'Arrived in a sealed box with the model.');
+  await backdate(hectorCrown.id, { sent_on: daysAgo(12), due_date: daysAgo(2), received_on: daysAgo(1) }, { DRAFT: daysAgo(12), SENT: daysAgo(12), RECEIVED: daysAgo(1) });
+
+  const samuelBridge = await labCase(others[1]!.id, amy, crownLab.id!, 'conventional', [
+    { restoration: 'bridge_retainer', tooth: '28', material: 'pfm', shade: 'A3.5' },
+    { restoration: 'pontic', tooth: '29', material: 'pfm', shade: 'A3.5' },
+    { restoration: 'bridge_retainer', tooth: '30', material: 'pfm', shade: 'A3.5' },
+  ], 'Three-unit bridge #28-30. Modified ridge-lap pontic; patient on warfarin, keep the pontic cleansable.');
+  await labs.send(amy, samuelBridge.id, 1);
+  await backdate(samuelBridge.id, { sent_on: daysAgo(16), due_date: daysAgo(3) }, { DRAFT: daysAgo(16), SENT: daysAgo(16) });
+
+  await labCase(others[0]!.id, amy, applianceLab.id!, 'digital_scan', [{ restoration: 'night_guard', arch: 'upper', material: 'acrylic' }], 'Hard upper guard, 2 mm, flat plane with canine guidance.');
 
   // ---------------------------------------------------------------- patient portal
   // Jordan uses the portal for themself; Lena (12) is reached through her parent's account.

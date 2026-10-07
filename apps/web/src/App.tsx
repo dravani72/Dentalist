@@ -13,6 +13,7 @@ import { PortalInbox } from './pages/PortalInbox';
 import { BillingPage } from './pages/billing/BillingPage';
 import { StaffAdmin } from './pages/admin/StaffAdmin';
 import { AccountSetup } from './pages/AccountSetup';
+import { LabCases } from './pages/LabCases';
 import { TelehealthPage } from './pages/telehealth/TelehealthPage';
 import { Callout } from './components/Callout';
 
@@ -54,6 +55,7 @@ function Authed() {
       ['patients', 'Patients', privs.includes('patient.read')],
       ['telehealth', 'Telehealth', privs.includes('telehealth.coordinate') || privs.includes('telehealth.consult')],
       ['portal-inbox', 'Portal inbox', privs.includes('portal.respond') || privs.includes('consent.manage')],
+      ['lab-cases', 'Lab cases', privs.includes('lab_case.manage')],
       ['billing', 'Billing', privs.includes('billing.read')],
       ['admin', 'Staff', privs.includes('admin.staff')],
       ['audit', 'Audit log', privs.includes('audit.read')],
@@ -104,6 +106,7 @@ function Authed() {
           {section === 'schedule' && <Schedule route={route} />}
           {section === 'patients' && !id && <Patients />}
           {section === 'patients' && id && <PatientWorkspace key={id} patientId={id} initialTab={route[2]} />}
+          {section === 'lab-cases' && <LabCases />}
           {section === 'billing' && <BillingPage />}
           {section === 'audit' && <AuditLog />}
           {section === 'admin' && <StaffAdmin staffId={id} />}
